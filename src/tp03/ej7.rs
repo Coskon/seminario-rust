@@ -1,17 +1,26 @@
 
 #![allow(unused)]
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum Color {
     ROJO, VERDE, AZUL, AMARILLO, BLANCO, NEGRO
 }
 
 impl Color {
     pub fn es_primario(&self) -> bool {
-        *self == Color::ROJO || *self == Color::AZUL || *self == Color::AMARILLO
+        self.equals(&Color::ROJO) || self.equals(&Color::AZUL) || self.equals(&Color::AMARILLO)
+    }
+
+    pub fn equals(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Color::ROJO, Color::ROJO) => true, (Color::AMARILLO, Color::AMARILLO) => true,
+            (Color::VERDE, Color::VERDE) => true, (Color::BLANCO, Color::BLANCO) => true, 
+            (Color::AZUL, Color::AZUL) => true,(Color::NEGRO, Color::NEGRO) => true,
+            _ => false
+        }
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Auto {
     marca: String,
     modelo: String,
@@ -43,6 +52,11 @@ impl Auto {
 
         precio_final
     }
+
+    pub fn equals(&self, other: &Self) -> bool {
+        self.marca == other.marca && self.modelo == other.modelo && self.anio == other.anio &&
+        self.precio_bruto == other.precio_bruto && self.color.equals(&other.color)
+    }
 }
 
 pub struct ConcesionarioAuto {
@@ -66,18 +80,29 @@ impl ConcesionarioAuto {
         }
     }
 
-    pub fn buscar_auto(&self, auto: Auto) -> Option<Auto> {
+    pub fn buscar_auto(&self, auto: &Auto) -> Option<&Auto> {
         for au in &self.autos {
-            if *au == auto {
-                return Some(au.clone());
+            if au.equals(auto) {
+                return Some(au);
             }
         }
         None
     }
+
+    fn buscar_indice_auto(&self, auto: &Auto) -> usize {
+        let mut i = 0;
+        for a in &self.autos {
+            if a.equals(auto) {
+                return i
+            }
+            i += 1;
+        }
+        i // se asume que existe
+    }
     
-    pub fn eliminar_auto(&mut self, auto: Auto) -> bool {
+    pub fn eliminar_auto(&mut self, auto: &Auto) -> bool {
         if let Some(auto_borrar) = self.buscar_auto(auto) {
-            self.autos.swap_remove(self.autos.iter().position(|x| *x == auto_borrar).unwrap());
+            self.autos.swap_remove(self.buscar_indice_auto(auto_borrar));
             true
         } else {
             false
@@ -121,9 +146,9 @@ fn test_concesionario_eliminar_auto() {
             Auto::new("Peugeot", "301", 2010, 19_000_000.0, Color::AZUL),
             Auto::new("Peugeot", "306", 2015, 30_000_000.0, Color::NEGRO)
         ], 5);
-    assert!(c.eliminar_auto(Auto::new("Peugeot", "208", 2006, 10_000_000.0, Color::BLANCO)));
-    assert!(!c.eliminar_auto(Auto::new("Peugeot", "206", 1999, 5_000_000.0, Color::AZUL))); // todo igual menos el color
-    assert!(!c.eliminar_auto(Auto::new("BMW", "Serie 1", 2012, 75_000_000.0, Color::AMARILLO))) // todo distinto
+    assert!(c.eliminar_auto(&Auto::new("Peugeot", "208", 2006, 10_000_000.0, Color::BLANCO)));
+    assert!(!c.eliminar_auto(&Auto::new("Peugeot", "206", 1999, 5_000_000.0, Color::AZUL))); // todo igual menos el color
+    assert!(!c.eliminar_auto(&Auto::new("BMW", "Serie 1", 2012, 75_000_000.0, Color::AMARILLO))) // todo distinto
 }
 
 #[test]
@@ -135,8 +160,8 @@ fn test_concesionario_buscar_auto() {
             Auto::new("Peugeot", "301", 2010, 19_000_000.0, Color::AZUL),
             Auto::new("Peugeot", "306", 2015, 30_000_000.0, Color::NEGRO)
         ], 5);
-    assert_ne!(c.buscar_auto(Auto::new("Peugeot", "208", 2006, 10_000_000.0, Color::BLANCO)), None);
-    assert_eq!(c.buscar_auto(Auto::new("Peugeot", "206", 1999, 5_000_000.0, Color::AZUL)), None); // todo igual menos el color
-    assert_eq!(c.buscar_auto(Auto::new("BMW", "Serie 1", 2012, 75_000_000.0, Color::AMARILLO)), None) // todo distinto
+    assert!(c.buscar_auto(&Auto::new("Peugeot", "208", 2006, 10_000_000.0, Color::BLANCO)).is_some());
+    assert!(c.buscar_auto(&Auto::new("Peugeot", "206", 1999, 5_000_000.0, Color::AZUL)).is_none()); // todo igual menos el color
+    assert!(c.buscar_auto(&Auto::new("BMW", "Serie 1", 2012, 75_000_000.0, Color::AMARILLO)).is_none()) // todo distinto
 }
 

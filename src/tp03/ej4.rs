@@ -1,4 +1,19 @@
 #![allow(unused)]
+pub enum TipoTriangulo {
+    ISOSCELES, EQUILATERO, ESCALENO
+}
+
+impl TipoTriangulo {
+    pub fn equals(&self, other: &Self) -> bool {
+        match (self, other) {
+            (TipoTriangulo::ISOSCELES, TipoTriangulo::ISOSCELES) => true,
+            (TipoTriangulo::EQUILATERO, TipoTriangulo::EQUILATERO) => true,
+            (TipoTriangulo::ESCALENO, TipoTriangulo::ESCALENO) => true,
+            _ => false
+        }
+    }
+}
+
 pub struct Triangulo {
     pub a: f64,
     pub b: f64,
@@ -23,13 +38,13 @@ impl Triangulo {
         (vals[0], vals[1], vals[2])
     }
 
-    pub fn determinar_tipo(&self) -> &str {
+    pub fn determinar_tipo(&self) -> TipoTriangulo {
         if self.a == self.b && self.b == self.c {
-            "equilatero"
+            TipoTriangulo::EQUILATERO
         } else if (self.a == self.b) || (self.a == self.c) || (self.b == self.c) {
-            "isosceles"
+            TipoTriangulo::ISOSCELES
         } else {
-            "escaleno"
+            TipoTriangulo::ESCALENO
         }
     }
 
@@ -68,19 +83,19 @@ fn test_triangulo_creacion_invalida() {
 #[test]
 fn test_triangulo_tipo() {
     let t = Triangulo::new(1.0, 1.0, 1.0);
-    assert_eq!(t.determinar_tipo(), "equilatero");
+    assert!(t.determinar_tipo().equals(&TipoTriangulo::EQUILATERO));
 
     let t = Triangulo::new(2.0, 2.0, 1.0);
-    assert_eq!(t.determinar_tipo(), "isosceles");
+    assert!(t.determinar_tipo().equals(&TipoTriangulo::ISOSCELES));
 
     let t = Triangulo::new(1.0, 2.0, 2.0);
-    assert_eq!(t.determinar_tipo(), "isosceles");
+    assert!(t.determinar_tipo().equals(&TipoTriangulo::ISOSCELES));
 
     let t = Triangulo::new(2.0, 1.0, 2.0);
-    assert_eq!(t.determinar_tipo(), "isosceles");
+    assert!(t.determinar_tipo().equals(&TipoTriangulo::ISOSCELES));
 
     let t = Triangulo::new(1.4, 2.5, 3.6);
-    assert_eq!(t.determinar_tipo(), "escaleno");
+    assert!(t.determinar_tipo().equals(&TipoTriangulo::ESCALENO));
 }
 
 #[test]

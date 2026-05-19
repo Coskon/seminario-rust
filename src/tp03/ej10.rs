@@ -2,17 +2,37 @@
 use std::collections::HashMap;
 use super::ej3::Fecha;
 
-#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum Genero {
     NOVELA, INFANTIL, TECNICO, OTRO
 }
 
-#[derive(PartialEq, Debug, Clone)]
+impl Genero {
+    pub fn equals(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Genero::NOVELA, Genero::NOVELA) => true, (Genero::TECNICO, Genero::TECNICO) => true,
+            (Genero::INFANTIL, Genero::INFANTIL) => true, (Genero::OTRO, Genero::OTRO) => true,
+            _ => false
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Estado {
     Devuelto, EnPrestamo
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+impl Estado {
+    pub fn equals(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Estado::Devuelto, Estado::Devuelto) => true,
+            (Estado::EnPrestamo, Estado::EnPrestamo) => true,
+            _ => false
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Libro {
     isbn: String,
     titulo: String,
@@ -25,9 +45,14 @@ impl Libro {
     pub fn new(isbn: &str, titulo: &str, autor: &str, paginas: usize, genero: Genero) -> Self {
         Libro { isbn: isbn.to_string(), titulo: titulo.to_string(), autor: autor.to_string(), paginas, genero }
     }
+
+    pub fn equals(&self, other: &Self) -> bool {
+        self.isbn == other.isbn && self.titulo == other.titulo && self.autor == other.autor &&
+        self.paginas == other.paginas && self.genero.equals(&other.genero)
+    }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Cliente {
     nombre: String,
     telefono: String,
@@ -38,9 +63,13 @@ impl Cliente {
     pub fn new(nombre: &str, telefono: &str, email: &str) -> Self {
         Cliente { nombre: nombre.to_string(), telefono: telefono.to_string(), email: email.to_string() }
     }
+
+    pub fn equals(&self, other: &Self) -> bool {
+        self.nombre == other.nombre && self.telefono == other.telefono && self.email == other.email
+    }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug)]
 pub struct Prestamo {
     libro: Libro,
     cliente: Cliente,
@@ -55,11 +84,11 @@ impl Prestamo {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug)]
 pub struct Biblioteca {
     nombre: String,
     direccion: String,
-    libros_disponibles: HashMap<Libro, usize>,
+    libros_disponibles: HashMap<String, usize>,
     prestamos_efectuados: Vec<Prestamo>
 }
 
@@ -69,14 +98,14 @@ impl Biblioteca {
     }
 
     pub fn cantidad_copias(&self, libro: &Libro) -> usize {
-        if let Some(cant) = self.libros_disponibles.get(libro) {
+        if let Some(cant) = self.libros_disponibles.get(&libro.isbn) {
             return *cant
         }
         0
     }
 
     pub fn decrementar_copias(&mut self, libro: &Libro) -> bool {
-        if let Some(cant) = self.libros_disponibles.get_mut(libro) {
+        if let Some(cant) = self.libros_disponibles.get_mut(&libro.isbn) {
             if *cant > 0 {
                 *cant -= 1;
                 return true
@@ -86,17 +115,17 @@ impl Biblioteca {
     }
 
     pub fn incrementar_copias(&mut self, libro: &Libro) {
-        if let Some(cant) = self.libros_disponibles.get_mut(libro) {
+        if let Some(cant) = self.libros_disponibles.get_mut(&libro.isbn) {
             *cant += 1;
         } else {
-            self.libros_disponibles.insert(libro.clone(), 1);
+            self.libros_disponibles.insert(libro.isbn.clone(), 1);
         }
     }
 
     pub fn contar_prestamos(&self, email_cliente: &str) -> usize {
         let mut cant = 0_usize;
         for prestamo in &self.prestamos_efectuados {
-            if prestamo.cliente.email.as_str() == email_cliente && prestamo.estado == Estado::EnPrestamo {
+            if prestamo.cliente.email.as_str() == email_cliente && prestamo.estado.equals(&Estado::EnPrestamo) {
                 cant += 1;
             }
         }
@@ -122,7 +151,7 @@ impl Biblioteca {
         let mut prest_vencer = vec![];
         let mut fecha_limite = Fecha::fecha_actual(); fecha_limite.sumar_dias(antes_de_dias);
         for prestamo in &self.prestamos_efectuados {
-            if prestamo.estado == Estado::EnPrestamo && fecha_limite.es_mayor(&prestamo.fecha_vencimiento) {
+            if prestamo.estado.equals(&Estado::EnPrestamo) && fecha_limite.es_mayor(&prestamo.fecha_vencimiento) {
                 prest_vencer.push(prestamo);
             }
         }
@@ -133,21 +162,21 @@ impl Biblioteca {
         self.prestamos_a_vencer(0)
     }
 
-    pub fn buscar_prestamo(&mut self, libro: Libro, cliente: Cliente) -> Option<&mut Prestamo> {
+    pub fn buscar_prestamo(&mut self, libro: &Libro, cliente: &Cliente) -> Option<&mut Prestamo> {
         for prestamo in self.prestamos_efectuados.iter_mut() {
-            if prestamo.libro == libro && prestamo.cliente == cliente {
+            if prestamo.libro.equals(libro) && prestamo.cliente.equals(cliente) {
                 return Some(prestamo)
             }
         }
         None
     }
 
-    pub fn devolver_libro(&mut self, libro: Libro, cliente: Cliente, fecha_devolucion: Fecha) -> bool {
-        if let Some(prestamo) = self.buscar_prestamo(libro.clone(), cliente) {
-            if prestamo.estado == Estado::EnPrestamo {
+    pub fn devolver_libro(&mut self, libro: &Libro, cliente: &Cliente, fecha_devolucion: Fecha) -> bool {
+        if let Some(prestamo) = self.buscar_prestamo(libro, cliente) {
+            if prestamo.estado.equals(&Estado::EnPrestamo) {
                 prestamo.estado = Estado::Devuelto;
                 prestamo.fecha_devolucion = Some(fecha_devolucion);
-                self.incrementar_copias(&libro);
+                self.incrementar_copias(libro);
                 return true
             }
         }
@@ -245,7 +274,7 @@ fn test_biblioteca_contar_prestamos() {
 
     assert_eq!(b.contar_prestamos("maria@hotmail.com"), 0);
 
-    assert!(b.devolver_libro(l1.clone(), cliente.clone(), Fecha::new(19, 5, 2026)));
+    assert!(b.devolver_libro(&l1, &cliente, Fecha::new(19, 5, 2026)));
     assert_eq!(b.contar_prestamos(cliente.email.as_str()), 1);
 }
 
@@ -276,7 +305,7 @@ fn test_biblioteca_realizar_prestamo() {
     assert!(b.realizar_prestamo(cliente.clone(), l2.clone(), Fecha::new(4, 8, 2026)));
     assert!(!b.realizar_prestamo(cliente.clone(), l2.clone(), Fecha::new(15, 7, 2026))); // mas de 5 prestamos "en prestamo" alcanzados
 
-    b.devolver_libro(l1.clone(), cliente.clone(), Fecha::new(19, 5, 2026));
+    b.devolver_libro(&l1, &cliente, Fecha::new(19, 5, 2026));
     assert!(b.realizar_prestamo(cliente.clone(), l1.clone(), Fecha::new(15, 7, 2026))); // mas de 5 prestamos alcanzados pero 5 "en prestamo", 1 "devuelto"
 }
 
@@ -297,7 +326,7 @@ fn test_biblioteca_prestamos_a_vencer() {
     }
     
     // fecha actual es 17/5/2026 (para testear)
-    assert_eq!(Fecha::fecha_actual(), Fecha::new(17, 5, 2026));
+    assert!(Fecha::fecha_actual().equals_fecha(17, 5, 2026));
 
     let cliente = Cliente::new("Pedro", "221 123-4567", "pedro@gmail.com");
     assert!(b.realizar_prestamo(cliente.clone(), l2.clone(), Fecha::new(24, 5, 2026))); // vence en 8 dias (dia siguiente al 24)
@@ -331,7 +360,7 @@ fn test_biblioteca_prestamos_vencidos() {
     }
     
     // fecha actual es 17/5/2026 (para testear)
-    assert_eq!(Fecha::fecha_actual(), Fecha::new(17, 5, 2026));
+    assert!(Fecha::fecha_actual().equals_fecha(17, 5, 2026));
 
     let cliente = Cliente::new("Pedro", "221 123-4567", "pedro@gmail.com");
     assert!(b.realizar_prestamo(cliente.clone(), l2.clone(), Fecha::new(10, 4, 2026))); // vencido
@@ -364,19 +393,19 @@ fn test_biblioteca_buscar_prestamo() {
     assert!(b.realizar_prestamo(cliente.clone(), l2.clone(), Fecha::new(10, 6, 2026)));
     assert!(b.realizar_prestamo(cliente.clone(), l1.clone(), Fecha::new(13, 7, 2026)));
 
-    assert_eq!(b.buscar_prestamo(l1.clone(), cliente.clone()).unwrap().cliente, cliente);
-    assert_eq!(b.buscar_prestamo(
-        Libro::new(
+    assert!(b.buscar_prestamo(&l1, &cliente).unwrap().cliente.equals(&cliente));
+    assert!(b.buscar_prestamo(
+        &Libro::new(
             "978-8-427-20212-2", "Los Juegos del Hambre", 
             "Suzanne Collins", 396, Genero::OTRO
         ),
-        Cliente::new("Pedro", "221 123-4567", "pedro@gmail.com")
-    ).unwrap().estado, Estado::EnPrestamo);
+        &Cliente::new("Pedro", "221 123-4567", "pedro@gmail.com")
+    ).unwrap().estado.equals(&Estado::EnPrestamo));
 
-    assert!(b.devolver_libro(l1.clone(), cliente.clone(), Fecha::new(20, 5, 2026)));
-    assert_eq!(b.buscar_prestamo(l1.clone(), cliente.clone()).unwrap().estado, Estado::Devuelto);
+    assert!(b.devolver_libro(&l1, &cliente, Fecha::new(20, 5, 2026)));
+    assert!(b.buscar_prestamo(&l1, &cliente).unwrap().estado.equals(&Estado::Devuelto));
 
-    assert_eq!(b.buscar_prestamo(l1.clone(), Cliente::new("abc", "def", "ghi@jkl.mno")), None); // prestamo que no existe
+    assert!(b.buscar_prestamo(&l1, &Cliente::new("abc", "def", "ghi@jkl.mno")).is_none()); // prestamo que no existe
 }
 
 #[test]
@@ -399,7 +428,7 @@ fn test_biblioteca_devolver_libro() {
     assert!(b.realizar_prestamo(cliente.clone(), l2.clone(), Fecha::new(10, 6, 2026)));
     assert!(b.realizar_prestamo(cliente.clone(), l1.clone(), Fecha::new(13, 7, 2026)));
 
-    assert!(b.devolver_libro(l1.clone(), cliente.clone(), Fecha::new(20, 5, 2026)));
-    assert!(!b.devolver_libro(l1.clone(), cliente.clone(), Fecha::new(20, 5, 2026))); // libro ya devuelto, no se puede volver a devolver
-    assert!(b.devolver_libro(l2.clone(), cliente.clone(), Fecha::new(20, 5, 2026)));
+    assert!(b.devolver_libro(&l1, &cliente, Fecha::new(20, 5, 2026)));
+    assert!(!b.devolver_libro(&l1, &cliente, Fecha::new(20, 5, 2026))); // libro ya devuelto, no se puede volver a devolver
+    assert!(b.devolver_libro(&l2, &cliente, Fecha::new(20, 5, 2026)));
 }

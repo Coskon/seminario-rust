@@ -1,10 +1,21 @@
 #![allow(unused)]
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum Genero {
     ROCK, POP, RAP, JAZZ, OTROS
 }
 
-#[derive(PartialEq, Debug, Clone)]
+impl Genero {
+    pub fn equals(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Genero::ROCK, Genero::ROCK) => true, (Genero::JAZZ, Genero::JAZZ) => true,
+            (Genero::POP, Genero::POP) => true, (Genero::OTROS, Genero::OTROS) => true,
+            (Genero::RAP, Genero::RAP) => true,
+            _ => false
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Cancion {
     pub titulo: String,
     pub artista: String,
@@ -14,6 +25,10 @@ pub struct Cancion {
 impl Cancion {
     pub fn new(titulo: &str, artista: &str, genero: Genero) -> Self {
         Cancion { titulo: titulo.to_string(), artista: artista.to_string(), genero }
+    }
+
+    pub fn equals(&self, other: &Self) -> bool {
+        self.titulo == other.titulo && self.artista == other.artista && self.genero.equals(&other.genero)
     }
 }
 
@@ -31,9 +46,20 @@ impl Playlist {
         self.canciones.push(cancion);
     }
 
+    fn buscar_indice_cancion(&self, nombre: &str) -> Option<usize> {
+        let mut i = 0;
+        for c in &self.canciones {
+            if c.titulo.as_str().to_lowercase() == nombre.to_lowercase() {
+                return Some(i)
+            }
+            i += 1;
+        }
+        None
+    }
+
     pub fn eliminar_cancion(&mut self, nombre: &str) -> bool {
-        if let Some(cancion) = self.buscar_cancion(nombre) {
-            self.canciones.remove(self.canciones.iter().position(|x| *x == cancion).unwrap());
+        if let Some(index) = self.buscar_indice_cancion(nombre) {
+            self.canciones.remove(index);
             true
         } else {
             false
@@ -44,12 +70,11 @@ impl Playlist {
         if index >= self.canciones.len() {
             return false
         }
-        if let Some(cancion) = self.buscar_cancion(nombre) {
-            let prev = self.canciones.iter().position(|x| *x == cancion).unwrap();
+        if let Some(prev) = self.buscar_indice_cancion(nombre) {
             if prev == index {
                 return true
             }
-            self.canciones.remove(prev);
+            let cancion = self.canciones.remove(prev);
             self.canciones.insert(index, cancion);
             true
         } else {
@@ -57,11 +82,11 @@ impl Playlist {
         }
     }
 
-    pub fn buscar_cancion(&self, nombre: &str) -> Option<Cancion> {
+    pub fn buscar_cancion(&self, nombre: &str) -> Option<&Cancion> {
         let nom = nombre.to_lowercase().to_string();
         for cancion in &self.canciones {
             if cancion.titulo.to_lowercase() == nom {
-                return Some(cancion.clone());
+                return Some(cancion);
             }
         }
         None
@@ -70,7 +95,7 @@ impl Playlist {
     pub fn canciones_de_genero(&self, genero: Genero) -> Vec<Cancion> {
         let mut lista = vec![];
         for cancion in &self.canciones {
-            if cancion.genero == genero {
+            if cancion.genero.equals(&genero) {
                 lista.push(cancion.clone());
             }
         }
@@ -175,11 +200,11 @@ fn test_playlist_buscar_cancion() {
         Cancion::new("The Show Must Go On", "Queen", Genero::ROCK),
         Cancion::new("Eye of the Tiger", "Survivor", Genero::ROCK)
     ]);
-    assert_eq!(p.buscar_cancion("Smooth Criminal"), Some(Cancion::new("Smooth Criminal", "Michael Jackson", Genero::POP)));
-    assert_eq!(p.buscar_cancion("Eye of the Tiger"), Some(Cancion::new("Eye of the Tiger", "Survivor", Genero::ROCK)));
-    assert_eq!(p.buscar_cancion("nothing else matters"), Some(Cancion::new("Nothing else Matters", "Metallica", Genero::OTROS))); // no importan las mayusculas
-    assert_eq!(p.buscar_cancion("Beat It"), None);
-    assert_eq!(p.buscar_cancion(""), None);
+    assert!(p.buscar_cancion("Smooth Criminal").unwrap().equals(&Cancion::new("Smooth Criminal", "Michael Jackson", Genero::POP)));
+    assert!(p.buscar_cancion("Eye of the Tiger").unwrap().equals(&Cancion::new("Eye of the Tiger", "Survivor", Genero::ROCK)));
+    assert!(p.buscar_cancion("nothing else matters").unwrap().equals(&Cancion::new("Nothing else Matters", "Metallica", Genero::OTROS))); // no importan las mayusculas
+    assert!(p.buscar_cancion("Beat It").is_none());
+    assert!(p.buscar_cancion("").is_none());
 }
 
 #[test]
@@ -192,7 +217,8 @@ fn test_playlist_canciones_genero() {
     ]);
     let rock = p.canciones_de_genero(Genero::ROCK);
     assert_eq!(rock.len(), 2);
-    assert!(rock.contains(&Cancion::new("The Show Must Go On", "Queen", Genero::ROCK)));
+    assert!(rock[0].equals(&Cancion::new("The Show Must Go On", "Queen", Genero::ROCK)));
+    
     assert_eq!(p.canciones_de_genero(Genero::OTROS).len(), 1);
     assert_eq!(p.canciones_de_genero(Genero::JAZZ).len(), 0);
 }
@@ -207,7 +233,7 @@ fn test_playlist_canciones_artista() {
     ]);
     let metallica = p.canciones_de_artista("Metallica");
     assert_eq!(metallica.len(), 2);
-    assert!(metallica.contains(&Cancion::new("Nothing else Matters", "Metallica", Genero::OTROS)));
+    assert!(metallica[1].equals(&Cancion::new("Nothing else Matters", "Metallica", Genero::OTROS)));
     assert_eq!(p.canciones_de_artista("opeth").len(), 1);
     assert_eq!(p.canciones_de_artista("MICHAEL JACKSON").len(), 0);
 }

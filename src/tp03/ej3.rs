@@ -1,5 +1,5 @@
 #![allow(unused)]
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)] // TODO
 pub struct Fecha {
     pub dia: u32,
     pub mes: u32,
@@ -86,12 +86,19 @@ impl Fecha {
         (self.anio == other.anio && self.mes == other.mes && self.dia > other.dia)
     }
 
-    // para hacer mas comodas las comparaciones
-    pub fn equals(&self, dia: u32, mes: u32, anio: u64) -> bool {
+    pub fn equals_fecha(&self, dia: u32, mes: u32, anio: u64) -> bool {
         self.dia == dia && self.mes == mes && self.anio == anio
     }
-    pub fn not_equals(&self, dia: u32, mes: u32, anio: u64) -> bool {
-        !self.equals(dia, mes, anio)
+
+    pub fn not_equals_fecha(&self, dia: u32, mes: u32, anio: u64) -> bool {
+        !self.equals_fecha(dia, mes, anio)
+    }
+
+    pub fn equals(&self, other: &Self) -> bool {
+        self.equals_fecha(other.dia, other.mes, other.anio)
+    }
+    pub fn not_equals(&self, other: &Self) -> bool {
+        !self.equals(other)
     }
 
     // para usar en el ejercicio 10
@@ -143,19 +150,19 @@ fn test_fecha_bisiesto() {
 fn test_fecha_sumar_dias() {
     let mut f = Fecha::new(15, 12, 2026);
     f.sumar_dias(4); // suma normal
-    assert!(f.equals(19, 12, 2026));
+    assert!(f.equals_fecha(19, 12, 2026));
     f.sumar_dias(12); // se queda al borde de cambiar de mes/año
-    assert!(f.equals(31, 12, 2026));
+    assert!(f.equals_fecha(31, 12, 2026));
     f.sumar_dias(1); // pasa de año
-    assert!(f.equals(1, 1, 2027));
+    assert!(f.equals_fecha(1, 1, 2027));
     f.sumar_dias(365); // todo un año
-    assert!(f.equals(1, 1, 2028));
+    assert!(f.equals_fecha(1, 1, 2028));
     f.sumar_dias(60); // como 2028 es bisiesto, queda 1/3/2028 en lugar de 2/3/2028
-    assert!(f.equals(1, 3, 2028));
+    assert!(f.equals_fecha(1, 3, 2028));
 
     let mut f = Fecha::new(1, 1, 2025);
     f.sumar_dias(60); // como 2025 no es bisiesto, queda 2/3/2025 en lugar de 1/3/2025
-    assert!(f.equals(2, 3, 2025));
+    assert!(f.equals_fecha(2, 3, 2025));
 }
 
 #[should_panic(expected="Fecha invalida")]
@@ -169,15 +176,15 @@ fn test_fecha_sumar_dias_invalido() {
 fn test_fecha_restar_dias() {
     let mut f = Fecha::new(15, 12, 2026);
     f.restar_dias(6); // resta normal
-    assert!(f.equals(9, 12, 2026));
+    assert!(f.equals_fecha(9, 12, 2026));
     f.restar_dias(8); // se queda en el primer dia
-    assert!(f.equals(1, 12, 2026));
+    assert!(f.equals_fecha(1, 12, 2026));
     f.restar_dias(1); // cambia al siguiente mes con la cantidad de dias de ese mes
-    assert!(f.equals(30, 11, 2026));
+    assert!(f.equals_fecha(30, 11, 2026));
     f.restar_dias(365); // todo un año
-    assert!(f.equals(30, 11, 2025));
+    assert!(f.equals_fecha(30, 11, 2025));
     f.restar_dias(365*2u32); // dos años donde uno de los años es bisiesto
-    assert!(f.equals(1, 12, 2023));
+    assert!(f.equals_fecha(1, 12, 2023));
 }
 
 #[should_panic(expected="Fecha invalida")]

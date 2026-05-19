@@ -2,12 +2,22 @@
 use super::ej3::Fecha;
 use std::collections::VecDeque;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum Animal {
     PERRO, GATO, CABALLO, OTRO
 }
 
-#[derive(PartialEq, Debug, Clone)]
+impl Animal {
+    pub fn equals(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Animal::PERRO, Animal::PERRO) => true, (Animal::CABALLO, Animal::CABALLO) => true,
+            (Animal::GATO, Animal::GATO) => true, (Animal::OTRO, Animal::OTRO) => true,
+            _ => false
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Persona {
     pub nombre: String,
     pub direccion: String,
@@ -18,9 +28,13 @@ impl Persona {
     pub fn new(nombre: &str, direccion: &str, telefono: &str) -> Self {
         Persona { nombre: nombre.to_string(), direccion: direccion.to_string(), telefono: telefono.to_string() }
     }
+
+    pub fn equals(&self, other: &Self) -> bool {
+        self.nombre == other.nombre && self.direccion == other.direccion && self.telefono == other.telefono
+    }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Mascota {
     pub nombre: String,
     pub edad: u32,
@@ -33,14 +47,18 @@ impl Mascota {
         Mascota { nombre: nombre.to_string(), edad, tipo, duenio }
     }
 
-    pub fn equals(&self, other_nombre: &str, other_nombre_duenio: &str, other_telefono: &str) -> bool {
+    pub fn equals(&self, other: &Self) -> bool {
+        self.nombre == other.nombre && self.edad == other.edad && self.tipo.equals(&other.tipo) && self.duenio.equals(&other.duenio)
+    }
+
+    pub fn equals_reducido(&self, other_nombre: &str, other_nombre_duenio: &str, other_telefono: &str) -> bool {
         self.nombre.as_str() == other_nombre &&
         self.duenio.nombre.as_str() == other_nombre_duenio &&
         self.duenio.telefono.as_str() == other_telefono
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Atencion {
     pub mascota: Mascota,
     pub diagnostico: String,
@@ -53,14 +71,24 @@ impl Atencion {
         Atencion { mascota, diagnostico: diagnostico.to_string(), tratamiento: tratamiento.to_string(), proxima_visita }
     }
 
-    pub fn equals(&self, nombre_mascota: &str, nombre_duenio: &str, telefono: &str ) -> bool {
+    pub fn equals(&self, other: &Self) -> bool {
+        let fecha_eq = match (&self.proxima_visita, &other.proxima_visita) {
+            (Some(fself), Some(fother)) => fself.equals(&fother),
+            (Option::None, Option::None) => true,
+            _ => false
+        };
+        fecha_eq && self.mascota.equals(&other.mascota) && self.diagnostico == other.diagnostico && 
+        self.tratamiento == other.tratamiento
+    }
+
+    pub fn equals_reducido(&self, nombre_mascota: &str, nombre_duenio: &str, telefono: &str ) -> bool {
         self.mascota.nombre.as_str() == nombre_mascota &&
         self.mascota.duenio.nombre.as_str() == nombre_duenio &&
         self.mascota.duenio.telefono.as_str() == telefono
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug)]
 pub struct Veterinaria {
     pub nombre: String,
     pub direccion: String,
@@ -88,7 +116,7 @@ impl Veterinaria {
     }
 
     pub fn eliminar_mascota(&mut self, nombre_mascota: &str, nombre_duenio: &str, telefono: &str) -> bool {
-        if let Some(index) = self.cola_atencion.iter().position(|x| x.equals(nombre_mascota, nombre_duenio, telefono)) {
+        if let Some(index) = self.cola_atencion.iter().position(|x| x.equals_reducido(nombre_mascota, nombre_duenio, telefono)) {
             self.cola_atencion.remove(index);
             true
         } else {
@@ -102,7 +130,7 @@ impl Veterinaria {
 
     pub fn buscar_atencion(&self, nombre_mascota: &str, nombre_duenio: &str, telefono: &str) -> Option<&Atencion> {
         for a in &self.registro_atenciones {
-            if a.equals(nombre_mascota, nombre_duenio, telefono) {
+            if a.equals_reducido(nombre_mascota, nombre_duenio, telefono) {
                 return Some(a);
             }
         }
@@ -111,7 +139,7 @@ impl Veterinaria {
 
     pub fn modificar_diagnostico(&mut self, nombre_mascota: &str, nombre_duenio: &str, telefono: &str, nuevo_diagnostico: &str) -> bool {
         for a in self.registro_atenciones.iter_mut() {
-            if a.equals(nombre_mascota, nombre_duenio, telefono) {
+            if a.equals_reducido(nombre_mascota, nombre_duenio, telefono) {
                 a.diagnostico = nuevo_diagnostico.to_string();
                 return true;
             }
@@ -121,7 +149,7 @@ impl Veterinaria {
 
     pub fn modificar_proxima_visita(&mut self, nombre_mascota: &str, nombre_duenio: &str, telefono: &str, nueva_fecha: Option<Fecha>) -> bool {
         for a in self.registro_atenciones.iter_mut() {
-            if a.equals(nombre_mascota, nombre_duenio, telefono) {
+            if a.equals_reducido(nombre_mascota, nombre_duenio, telefono) {
                 a.proxima_visita = nueva_fecha;
                 return true;
             }
@@ -132,7 +160,7 @@ impl Veterinaria {
     pub fn eliminar_atencion(&mut self, nombre_mascota: &str, nombre_duenio: &str, telefono: &str) -> bool {
         let mut index = 0;
         for a in self.registro_atenciones.iter_mut() {
-            if a.equals(nombre_mascota, nombre_duenio, telefono) {
+            if a.equals_reducido(nombre_mascota, nombre_duenio, telefono) {
                 self.registro_atenciones.remove(index);
                 return true;
             }
@@ -151,9 +179,9 @@ fn test_veterinaria_agregar_mascota() {
         Persona::new("Carlos", "1 y 44", "221 891-0111")));
     assert_eq!(v.cola_atencion.len(), 2);
     assert_eq!(v.cola_atencion[0].nombre, "Bola".to_string());
-    assert_eq!(v.cola_atencion[0].tipo, Animal::GATO);
+    assert!(v.cola_atencion[0].tipo.equals(&Animal::GATO));
     assert_eq!(v.cola_atencion[1].nombre, "Micky".to_string());
-    assert_eq!(v.cola_atencion[1].tipo, Animal::PERRO);
+    assert!(v.cola_atencion[1].tipo.equals(&Animal::PERRO));
 }
 
 #[test]
@@ -165,9 +193,9 @@ fn test_veterinaria_agregar_mascota_prioritaria() {
         Persona::new("Carlos", "1 y 44", "221 891-0111")));
     assert_eq!(v.cola_atencion.len(), 2);
     assert_eq!(v.cola_atencion[0].nombre, "Micky".to_string());
-    assert_eq!(v.cola_atencion[0].tipo, Animal::PERRO);
+    assert!(v.cola_atencion[0].tipo.equals(&Animal::PERRO));
     assert_eq!(v.cola_atencion[1].nombre, "Bola".to_string());
-    assert_eq!(v.cola_atencion[1].tipo, Animal::GATO);
+    assert!(v.cola_atencion[1].tipo.equals(&Animal::GATO));
 }
 
 #[test]
@@ -179,17 +207,17 @@ fn test_veterinaria_atender_mascota() {
         Persona::new("Carlos", "1 y 44", "221 891-0111")));
 
     let m1 = v.atender_mascota();
-    assert_ne!(m1, None);
+    assert!(m1.is_some());
     assert_eq!(m1.unwrap().nombre, "Bola".to_string());
 
     let m2 = v.atender_mascota();
-    assert_ne!(m2, None);
+    assert!(m2.is_some());
     assert_eq!(m2.unwrap().nombre, "Micky".to_string());
 
     assert_eq!(v.cola_atencion.len(), 0);
 
     let mn = v.atender_mascota();
-    assert_eq!(mn, None);
+    assert!(mn.is_none());
 }
 
 #[test]
@@ -231,9 +259,9 @@ fn test_veterinaria_registrar_atencion() {
     assert_eq!(v.registro_atenciones.len(), 2);
 
     assert_eq!(v.registro_atenciones[0].diagnostico, "Pulgas".to_string());
-    assert_eq!(v.registro_atenciones[0].proxima_visita, None);
+    assert!(v.registro_atenciones[0].proxima_visita.is_none());
     assert_eq!(v.registro_atenciones[1].diagnostico, "Garrapatas".to_string());
-    assert_eq!(*v.registro_atenciones[1].proxima_visita.as_ref().unwrap(), Fecha::new(12, 6, 2026));
+    assert!(v.registro_atenciones[1].proxima_visita.clone().unwrap().equals(&Fecha::new(12, 6, 2026)));
 }
 
 #[test]
@@ -261,8 +289,8 @@ fn test_veterinaria_buscar_atencion() {
     assert_eq!(*a1.diagnostico, "Garrapatas".to_string());
     assert_eq!(*a1.mascota.nombre, "Micky".to_string());
 
-    assert_eq!(v.buscar_atencion("Pelos", "Maria", "221 420-6769"), None);
-    assert_eq!(v.buscar_atencion("", "", ""), None);
+    assert!(v.buscar_atencion("Pelos", "Maria", "221 420-6769").is_none());
+    assert!(v.buscar_atencion("", "", "").is_none());
 }
 
 #[test]
@@ -319,7 +347,7 @@ fn test_veterinaria_modificar_proxima_visita() {
         "Bola", "Pedro", "221 123-4567",
         Some(Fecha::new(5, 7, 2026))
     ));
-    assert_eq!(*v.registro_atenciones[0].proxima_visita.as_ref().unwrap(), Fecha::new(5, 7, 2026));
+    assert!(v.registro_atenciones[0].proxima_visita.clone().unwrap().equals(&Fecha::new(5, 7, 2026)));
 
     assert!(!v.modificar_proxima_visita(
         "Leo", "Maria", "221 420-6769",
@@ -330,7 +358,7 @@ fn test_veterinaria_modificar_proxima_visita() {
         "Micky", "Carlos", "221 891-0111",
         None
     ));
-    assert_eq!(v.registro_atenciones[1].proxima_visita, None);
+    assert!(v.registro_atenciones[1].proxima_visita.is_none());
 }
 
 #[test]
