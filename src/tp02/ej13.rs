@@ -1,12 +1,11 @@
 #![allow(unused)]
 pub fn ordenar_nombres<const N: usize>(arr: &mut [String; N]) {
-    if N == 0 {
-        return;
-    }
-    for i in 0..N-1 {
-        for j in 0..N-i-1 {
-            if arr[j] > arr[j+1] {
-                arr.swap(j, j+1);
+    if !arr.is_empty() {
+        for i in 0..N-1 {
+            for j in 0..N-i-1 {
+                if arr[j] > arr[j+1] {
+                    arr.swap(j, j+1);
+                }
             }
         }
     }

@@ -1,7 +1,7 @@
 #![allow(unused)]
 pub fn serie_geometrica<const TAMAÑO: usize>() -> [u32; TAMAÑO] {
     let mut arr: [u32; TAMAÑO] = [0; TAMAÑO];
-    if TAMAÑO > 0 {
+    if !arr.is_empty() {
         arr[0] = 1;
         for i in 1..TAMAÑO {
             arr[i] = arr[i-1]*2;

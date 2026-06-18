@@ -1,1 +1,5 @@
 /target
+/src/coverage
+comandos.txt
+main
+tarpaulin-report.html

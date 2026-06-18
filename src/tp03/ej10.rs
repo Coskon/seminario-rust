@@ -406,6 +406,9 @@ fn test_biblioteca_buscar_prestamo() {
     assert!(b.buscar_prestamo(&l1, &cliente).unwrap().estado.equals(&Estado::Devuelto));
 
     assert!(b.buscar_prestamo(&l1, &Cliente::new("abc", "def", "ghi@jkl.mno")).is_none()); // prestamo que no existe
+    let mut l2 = l1.clone();
+    l2.genero = Genero::INFANTIL;
+    assert!(b.buscar_prestamo(&l2, &cliente).is_none()); // libro de distinto genero
 }
 
 #[test]

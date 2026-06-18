@@ -198,11 +198,13 @@ fn test_playlist_buscar_cancion() {
         Cancion::new("Smooth Criminal", "Michael Jackson", Genero::POP),
         Cancion::new("Nothing else Matters", "Metallica", Genero::OTROS),
         Cancion::new("The Show Must Go On", "Queen", Genero::ROCK),
-        Cancion::new("Eye of the Tiger", "Survivor", Genero::ROCK)
+        Cancion::new("Eye of the Tiger", "Survivor", Genero::ROCK),
+        Cancion::new("Without Me", "Eminem", Genero::RAP)
     ]);
     assert!(p.buscar_cancion("Smooth Criminal").unwrap().equals(&Cancion::new("Smooth Criminal", "Michael Jackson", Genero::POP)));
     assert!(p.buscar_cancion("Eye of the Tiger").unwrap().equals(&Cancion::new("Eye of the Tiger", "Survivor", Genero::ROCK)));
     assert!(p.buscar_cancion("nothing else matters").unwrap().equals(&Cancion::new("Nothing else Matters", "Metallica", Genero::OTROS))); // no importan las mayusculas
+    assert!(p.buscar_cancion("without me").unwrap().equals(&Cancion::new("Without Me", "Eminem", Genero::RAP)));
     assert!(p.buscar_cancion("Beat It").is_none());
     assert!(p.buscar_cancion("").is_none());
 }
@@ -254,7 +256,7 @@ fn test_playlist_borrar_canciones() {
         Cancion::new("Bohemian Rhapsody", "Queen", Genero::ROCK),
         Cancion::new("Burden", "Opeth", Genero::OTROS)
     ]);
-    assert_eq!(p.canciones.len(), 4);
+    assert_eq!(p.len(), 4);
     p.borrar_canciones();
-    assert_eq!(p.canciones.len(), 0);
+    assert_eq!(p.len(), 0);
 }

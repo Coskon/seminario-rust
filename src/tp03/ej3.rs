@@ -108,6 +108,19 @@ impl Fecha {
 }
 
 #[test]
+fn test_fecha_equals() {
+    let f = Fecha::new(2, 6, 2004);
+    assert!(f.equals(&Fecha::new(2, 6, 2004)));
+    assert!(f.equals_fecha(2, 6, 2004));
+    assert!(f.not_equals(&Fecha::new(3, 6, 2004)));
+    assert!(f.not_equals_fecha(3, 6, 2004));
+    assert!(f.not_equals(&Fecha::new(2, 7, 2004)));
+    assert!(f.not_equals_fecha(2, 7, 2004));
+    assert!(f.not_equals(&Fecha::new(2, 6, 2005)));
+    assert!(f.not_equals_fecha(2, 6, 2005));
+}
+
+#[test]
 fn test_fecha_es_valida() {
     let f = Fecha::new(15, 12, 2026);
     assert!(f.es_fecha_valida());

@@ -28,10 +28,6 @@ impl Persona {
     pub fn new(nombre: &str, direccion: &str, telefono: &str) -> Self {
         Persona { nombre: nombre.to_string(), direccion: direccion.to_string(), telefono: telefono.to_string() }
     }
-
-    pub fn equals(&self, other: &Self) -> bool {
-        self.nombre == other.nombre && self.direccion == other.direccion && self.telefono == other.telefono
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -45,10 +41,6 @@ pub struct Mascota {
 impl Mascota {
     pub fn new(nombre: &str, edad: u32, tipo: Animal, duenio: Persona) -> Self {
         Mascota { nombre: nombre.to_string(), edad, tipo, duenio }
-    }
-
-    pub fn equals(&self, other: &Self) -> bool {
-        self.nombre == other.nombre && self.edad == other.edad && self.tipo.equals(&other.tipo) && self.duenio.equals(&other.duenio)
     }
 
     pub fn equals_reducido(&self, other_nombre: &str, other_nombre_duenio: &str, other_telefono: &str) -> bool {
@@ -71,16 +63,6 @@ impl Atencion {
         Atencion { mascota, diagnostico: diagnostico.to_string(), tratamiento: tratamiento.to_string(), proxima_visita }
     }
 
-    pub fn equals(&self, other: &Self) -> bool {
-        let fecha_eq = match (&self.proxima_visita, &other.proxima_visita) {
-            (Some(fself), Some(fother)) => fself.equals(&fother),
-            (Option::None, Option::None) => true,
-            _ => false
-        };
-        fecha_eq && self.mascota.equals(&other.mascota) && self.diagnostico == other.diagnostico && 
-        self.tratamiento == other.tratamiento
-    }
-
     pub fn equals_reducido(&self, nombre_mascota: &str, nombre_duenio: &str, telefono: &str ) -> bool {
         self.mascota.nombre.as_str() == nombre_mascota &&
         self.mascota.duenio.nombre.as_str() == nombre_duenio &&
@@ -99,8 +81,7 @@ pub struct Veterinaria {
 
 impl Veterinaria {
     pub fn new(nombre: &str, direccion: &str, id: u64) -> Self {
-        Veterinaria { nombre: nombre.to_string(), direccion: direccion.to_string(), id,
-            cola_atencion: VecDeque::new(), registro_atenciones: vec![] }
+        Veterinaria { nombre: nombre.to_string(), direccion: direccion.to_string(), id, cola_atencion: VecDeque::new(), registro_atenciones: vec![] }
     }
 
     pub fn agregar_mascota(&mut self, mascota: Mascota) {
@@ -182,6 +163,16 @@ fn test_veterinaria_agregar_mascota() {
     assert!(v.cola_atencion[0].tipo.equals(&Animal::GATO));
     assert_eq!(v.cola_atencion[1].nombre, "Micky".to_string());
     assert!(v.cola_atencion[1].tipo.equals(&Animal::PERRO));
+}
+
+#[test]
+fn test_animal_equals() {
+    assert!(Animal::GATO.equals(&Animal::GATO));
+    assert!(Animal::PERRO.equals(&Animal::PERRO));
+    assert!(Animal::CABALLO.equals(&Animal::CABALLO));
+    assert!(Animal::OTRO.equals(&Animal::OTRO));
+    assert!(!Animal::GATO.equals(&Animal::OTRO));
+    assert!(!Animal::OTRO.equals(&Animal::GATO));
 }
 
 #[test]

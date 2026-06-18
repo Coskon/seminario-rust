@@ -82,20 +82,30 @@ fn test_triangulo_creacion_invalida() {
 
 #[test]
 fn test_triangulo_tipo() {
-    let t = Triangulo::new(1.0, 1.0, 1.0);
-    assert!(t.determinar_tipo().equals(&TipoTriangulo::EQUILATERO));
+    let tipo = Triangulo::new(1.0, 1.0, 1.0).determinar_tipo();
+    assert!(tipo.equals(&TipoTriangulo::EQUILATERO));
+    assert!(!tipo.equals(&TipoTriangulo::ISOSCELES));
+    assert!(!tipo.equals(&TipoTriangulo::ESCALENO));
 
-    let t = Triangulo::new(2.0, 2.0, 1.0);
-    assert!(t.determinar_tipo().equals(&TipoTriangulo::ISOSCELES));
+    let tipo = Triangulo::new(2.0, 2.0, 1.0).determinar_tipo();
+    assert!(tipo.equals(&TipoTriangulo::ISOSCELES));
+    assert!(!tipo.equals(&TipoTriangulo::EQUILATERO));
+    assert!(!tipo.equals(&TipoTriangulo::ESCALENO));
 
-    let t = Triangulo::new(1.0, 2.0, 2.0);
-    assert!(t.determinar_tipo().equals(&TipoTriangulo::ISOSCELES));
+    let tipo = Triangulo::new(1.0, 2.0, 2.0).determinar_tipo();
+    assert!(tipo.equals(&TipoTriangulo::ISOSCELES));
+    assert!(!tipo.equals(&TipoTriangulo::EQUILATERO));
+    assert!(!tipo.equals(&TipoTriangulo::ESCALENO));
 
-    let t = Triangulo::new(2.0, 1.0, 2.0);
-    assert!(t.determinar_tipo().equals(&TipoTriangulo::ISOSCELES));
+    let tipo = Triangulo::new(2.0, 1.0, 2.0).determinar_tipo();
+    assert!(tipo.equals(&TipoTriangulo::ISOSCELES));
+    assert!(!tipo.equals(&TipoTriangulo::EQUILATERO));
+    assert!(!tipo.equals(&TipoTriangulo::ESCALENO));
 
-    let t = Triangulo::new(1.4, 2.5, 3.6);
-    assert!(t.determinar_tipo().equals(&TipoTriangulo::ESCALENO));
+    let tipo = Triangulo::new(1.4, 2.5, 3.6).determinar_tipo();
+    assert!(tipo.equals(&TipoTriangulo::ESCALENO));
+    assert!(!tipo.equals(&TipoTriangulo::EQUILATERO));
+    assert!(!tipo.equals(&TipoTriangulo::ISOSCELES));
 }
 
 #[test]
