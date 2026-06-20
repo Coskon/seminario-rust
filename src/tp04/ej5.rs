@@ -26,14 +26,40 @@ impl Usuario {
 }
 
 #[derive(PartialEq, Debug, Clone)]
+pub struct Rng {
+    state: u64
+}
+
+impl Rng {
+    const TEST_SEED: u64 = 1234_u64;
+
+    pub fn new(seed: u64) -> Self {
+        Rng { state: seed.saturating_add(1) } // evita seed=0
+    }
+
+    pub fn test_default() -> Self {
+        Rng::new(Rng::TEST_SEED)
+    }
+
+    pub fn get_next(&mut self) -> u64 {
+        // algoritmo: xorshift64*
+        self.state ^= self.state >> 12;
+        self.state ^= self.state << 25;
+        self.state ^= self.state >> 27;
+        self.state.wrapping_mul(2685821657736338717_u64)
+    }
+}
+
+#[derive(PartialEq, Debug, Clone)]
 pub struct Blockchain {
     pub nombre: String,
     pub prefijo: String
 }
 
 impl Blockchain {
-    pub fn get_hash(&self) -> String {
-        self.nombre.clone() + &0x1234_5678_9ABC_DEF0_u64.to_string()
+    pub fn get_hash(&self, rng: &mut Rng) -> String {
+        let num = rng.get_next();
+        self.nombre.clone() + &num.to_string()
     }
 
     pub fn bitcoin() -> Self {
@@ -84,6 +110,19 @@ impl Criptomoneda {
         vec![Criptomoneda::bitcoin(), Criptomoneda::tether(), Criptomoneda::ethereum(),
              Criptomoneda::usdcoin(), Criptomoneda::shibainu()]
     }
+
+    /*
+    pub fn from_prefijo(prefijo: &str) -> Result<Self, &'static str> {
+        Ok(match prefijo {
+            Criptomoneda::BITCOIN => Criptomoneda::bitcoin(),
+            Criptomoneda::TETHER => Criptomoneda::tether(),
+            Criptomoneda::ETHEREUM => Criptomoneda::ethereum(),
+            Criptomoneda::USDCOIN => Criptomoneda::usdcoin(),
+            Criptomoneda::SHIBAINU => Criptomoneda::shibainu(),
+            _ => return Err("Prefijo de criptomoneda invalido")
+        })
+    }
+    */
 
     pub fn bitcoin() -> Self {
         Criptomoneda { nombre: "Bitcoin".to_string(), prefijo: Criptomoneda::BITCOIN.to_string(), blockchains: vec![Blockchain::bitcoin()]}
@@ -217,7 +256,7 @@ impl Transaccion {
         }
     }
 
-    pub fn validar_retiro_cripto(&self, dni_validar: u32, monto_validar: f64, cripto_validar: &str, cotizacion_validar: f64, blockchain_validar: &str, hash_validar: String) -> bool {
+    pub fn validar_retiro_cripto(&self, dni_validar: u32, monto_validar: f64, cripto_validar: &str, cotizacion_validar: f64, blockchain_validar: &str, hash_validar: &str) -> bool {
         match self {
             Transaccion::RetiroCripto { monto, usuario, criptomoneda, cotizacion, hash, blockchain,  .. } => 
                 *monto == monto_validar && usuario.dni == dni_validar && *criptomoneda == cripto_validar && *cotizacion == cotizacion_validar && *hash == hash_validar && blockchain.prefijo == blockchain_validar,
@@ -248,12 +287,13 @@ pub struct PlataformaXYZ {
     usuarios: BTreeMap<u32, Usuario>, // dni -- usuario
     transacciones: BTreeMap<u32, Vec<Transaccion>>, // dni -- historial de transacciones del usuario
     balances: BTreeMap<u32, Balance>, // dni -- balance de las distintas criptos del usuario
-    criptomonedas: Vec<Criptomoneda>
+    criptomonedas: Vec<Criptomoneda>,
+    rng: Rng
 }
 
 impl PlataformaXYZ {
-    pub fn new() -> Self {
-        PlataformaXYZ { usuarios: BTreeMap::new(), balances: BTreeMap::new(), transacciones: BTreeMap::new(), criptomonedas: Criptomoneda::lista_criptos() }
+    pub fn new(seed: u64) -> Self {
+        PlataformaXYZ { usuarios: BTreeMap::new(), balances: BTreeMap::new(), transacciones: BTreeMap::new(), criptomonedas: Criptomoneda::lista_criptos(), rng: Rng::new(seed) }
     }
 
     pub fn get_cotizacion(prefijo: &str) -> f64 {
@@ -451,7 +491,7 @@ impl PlataformaXYZ {
                 usuario: user.clone(), 
                 cotizacion: cotizacion,
                 blockchain: blockchain.clone(),
-                hash: blockchain.get_hash()
+                hash: blockchain.get_hash(&mut self.rng)
             };
             self.transacciones.get_mut(&dni).unwrap().push(t.clone());
             Ok(t)
@@ -561,13 +601,57 @@ impl PlataformaXYZ {
 
 #[cfg(test)]
 mod tests {
-    use crate::tp04::ej3::TipoMedioPago::Cripto;
+    use super::*;
 
-use super::*;
+    #[test]
+    fn test_rng() {
+        let mut rng = Rng::test_default();
+        let expected_nums = [
+            304805589531039275,
+            2147874104627985986,
+            16155265163649813729,
+            4403088556832279230,
+            10376954439805897369,
+            93720924362322587,
+            13446763960826623206,
+            12955923286034900152,
+            6178981222045246712,
+            3772662766451115367
+        ];
+        for expected in expected_nums {
+            assert_eq!(rng.get_next(), expected);
+        }
+
+        let mut rng = Rng::new(0xABCDEF);
+        let expected_nums = [
+            6273434273988899587,
+            6349196210748312167,
+            13584903164012829465,
+            8940922558213669440,
+            3244105809367889893,
+            4485170131248826647,
+            10010263615790142075,
+            18056771349868256435,
+            18206078466018783709,
+            5985566244046631639
+        ];
+        for expected in expected_nums {
+            assert_eq!(rng.get_next(), expected);
+        }
+    }
+
+    #[test]
+    fn test_blockchain_hash() {
+        let b = Blockchain::bitcoin();
+        let mut rng = Rng::test_default();
+        assert_eq!(b.get_hash(&mut rng), b.nombre.clone() + &304805589531039275_u64.to_string());
+        assert_eq!(b.get_hash(&mut rng), b.nombre.clone() + &2147874104627985986_u64.to_string());
+        assert_eq!(b.get_hash(&mut rng), b.nombre.clone() + &16155265163649813729_u64.to_string());
+    }
 
     #[test]
     fn test_registrar_usuario() {
-        let mut p = PlataformaXYZ::new();
+        let mut p = PlataformaXYZ::new(Rng::TEST_SEED);
         assert!(p.registrar_usuario(
             Usuario::new("Pedro", "Perez", "pedro.perez@gmail.com", 41_192_387)
         ).is_ok());
@@ -591,7 +675,7 @@ use super::*;
     }
 
     fn crear_plataforma_base() -> PlataformaXYZ {
-        let mut p = PlataformaXYZ::new();
+        let mut p = PlataformaXYZ::new(Rng::TEST_SEED);
         assert!(p.registrar_usuario(
             Usuario::new("Pedro", "Perez", "pedro.perez@gmail.com", 41_192_387)
         ).is_ok());
@@ -814,11 +898,17 @@ use super::*;
         let tether_coti = PlataformaXYZ::get_cotizacion(Criptomoneda::TETHER);
         let blockchain = Blockchain::ethereum();
         assert!(p.retirar_cripto(41_192_387, 250.0, Criptomoneda::TETHER, &blockchain).is_ok_and(
-            |t| t.validar_retiro_cripto(41_192_387, 250.0, Criptomoneda::TETHER, tether_coti, &blockchain.prefijo, blockchain.get_hash()) && 
+            |t| t.validar_retiro_cripto(41_192_387, 250.0, Criptomoneda::TETHER, tether_coti, &blockchain.prefijo, "Ethereum304805589531039275") && 
                 !t.validar_recepcion_cripto(41_192_387, 999.0, "", 0.0, "")
         ));
         assert!(p.get_balance_usuario(41_192_387, Criptomoneda::TETHER).is_ok_and(|v| v == Some(500.0 - 250.0)));
         
+        // la plataforma genera el segundo hash -- rng genera el segundo hash con la misma seed -> deberia ser el mismo valor
+        assert!(p.retirar_cripto(41_192_387, 10.0, Criptomoneda::TETHER, &blockchain).is_ok_and(
+            |t| t.validar_retiro_cripto(41_192_387, 10.0, Criptomoneda::TETHER, tether_coti, &blockchain.prefijo, "Ethereum2147874104627985986")
+        ));
+        assert!(p.get_balance_usuario(41_192_387, Criptomoneda::TETHER).is_ok_and(|v| v == Some(500.0 - 250.0 - 10.0)));
+
         assert!(p.retirar_cripto(38_998_761, 250.0, Criptomoneda::TETHER, &blockchain).is_err_and(|e| e == ErrorTransaccion::UsuarioNoValidado));
         assert!(p.retirar_cripto(41_192_387, -1000.0, Criptomoneda::TETHER, &blockchain).is_err_and(|e| e == ErrorTransaccion::MontoNegativo));
         assert!(p.retirar_cripto(41_192_387, 1000.0, Criptomoneda::TETHER, &blockchain).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
@@ -842,7 +932,7 @@ use super::*;
         let blockchain = Blockchain::ethereum();
         assert!(p.recibir_cripto(41_192_387, 250.0, Criptomoneda::USDCOIN, &blockchain).is_ok_and(
             |t| t.validar_recepcion_cripto(41_192_387, 250.0, Criptomoneda::USDCOIN, usdc_coti, &blockchain.prefijo) && 
-                !t.validar_retiro_cripto(41_192_387, 999.0, "", 0.0, "", "".to_string())
+                !t.validar_retiro_cripto(41_192_387, 999.0, "", 0.0, "", "")
         ));
         assert!(p.get_balance_usuario(41_192_387, Criptomoneda::USDCOIN).is_ok_and(|v| v == Some(500.0 + 250.0)));
 
