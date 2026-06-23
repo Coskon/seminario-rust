@@ -299,16 +299,51 @@ pub enum ErrorUsuario {
     UsuarioYaExiste, UsuarioInexistente
 }
 
+#[derive(PartialEq, Debug, Clone)]
+struct EntryUsuario {
+    usuario: Usuario,
+    transacciones: Vec<Transaccion>,
+    balance: Balance
+}
+
+impl EntryUsuario {
+    pub fn get_usuario(&self) -> &Usuario {
+        &self.usuario
+    }
+
+    pub fn get_mut_usuario(&mut self) -> &mut Usuario {
+        &mut self.usuario
+    }
+
+    pub fn clone_usuario(&self) -> Usuario {
+        self.usuario.clone()
+    }
+
+    pub fn get_balance(&self) -> &Balance {
+        &self.balance
+    }
+
+    pub fn get_mut_balance(&mut self) -> &mut Balance {
+        &mut self.balance
+    }
+
+    pub fn add_transaccion(&mut self, t: &Transaccion) {
+        self.transacciones.push(t.clone());
+    }
+
+    pub fn identidad_validada(&self) -> bool {
+        self.usuario.identidad_validada()
+    }
+}
+
 pub struct PlataformaXYZ {
-    usuarios: BTreeMap<u32, Usuario>, // dni -- usuario
-    transacciones: BTreeMap<u32, Vec<Transaccion>>, // dni -- historial de transacciones del usuario
-    balances: BTreeMap<u32, Balance>, // dni -- balance de las distintas criptos del usuario
+    usuarios: BTreeMap<u32, EntryUsuario>, // dni -- datos del usuario
     rng: Rng
 }
 
 impl PlataformaXYZ {
     pub fn new(seed: u64) -> Self {
-        PlataformaXYZ { usuarios: BTreeMap::new(), balances: BTreeMap::new(), transacciones: BTreeMap::new(), rng: Rng::new(seed) }
+        PlataformaXYZ { usuarios: BTreeMap::new(), rng: Rng::new(seed) }
     }
 
     pub fn get_cotizacion(cripto: &Criptomoneda) -> f64 {
@@ -327,17 +362,15 @@ impl PlataformaXYZ {
         match self.usuarios.entry(dni) {
             Entry::Occupied(v) => Err(ErrorUsuario::UsuarioYaExiste),
             Entry::Vacant(v) => {
-                v.insert(usuario);
-                self.transacciones.insert(dni, vec![]);
-                self.balances.insert(dni, Balance::default());
+                v.insert(EntryUsuario { usuario, transacciones: vec![], balance: Balance::default() });
                 Ok(())
             }
         }
     }
 
     pub fn validar_usuario(&mut self, dni: u32) -> Result<(), ErrorUsuario> {
-        if let Some(user) = self.usuarios.get_mut(&dni) {
-            user.validar_identidad();
+        if let Some(entryuser) = self.usuarios.get_mut(&dni) {
+            entryuser.get_mut_usuario().validar_identidad();
             Ok(())
         } else {
             Err(ErrorUsuario::UsuarioInexistente)
@@ -345,24 +378,24 @@ impl PlataformaXYZ {
     }
 
     pub fn get_usuario(&self, dni: u32) -> Result<&Usuario, ErrorUsuario> {
-        if let Some(user) = self.usuarios.get(&dni) {
-            Ok(user)
+        if let Some(entryuser) = self.usuarios.get(&dni) {
+            Ok(entryuser.get_usuario())
         } else {
             Err(ErrorUsuario::UsuarioInexistente)
         }
     }
 
     pub fn get_balance_cripto_usuario(&self, dni: u32, cripto: Criptomoneda) -> Result<f64, ErrorUsuario> {
-        if let Some(balance) = self.balances.get(&dni) {
-            Ok(balance.get_cripto(&cripto))
+        if let Some(entryuser) = self.usuarios.get(&dni) {
+            Ok(entryuser.get_balance().get_cripto(&cripto))
         } else {
             Err(ErrorUsuario::UsuarioInexistente)
         }
     }
 
     pub fn get_balance_usuario(&self, dni: u32) -> Result<f64, ErrorUsuario> {
-        if let Some(balance) = self.balances.get(&dni) {
-            Ok(balance.get_dinero())
+        if let Some(entryuser) = self.usuarios.get(&dni) {
+            Ok(entryuser.get_balance().get_dinero())
         } else {
             Err(ErrorUsuario::UsuarioInexistente)
         }
@@ -371,22 +404,20 @@ impl PlataformaXYZ {
     pub fn ingresar_dinero(&mut self, dni: u32, monto: f64) -> Result<Transaccion, ErrorTransaccion> {
         if !monto.is_finite() || monto <= 0.0 {
             Err(ErrorTransaccion::MontoInvalido)
-        } else if let Some(user) = self.usuarios.get(&dni) {
-            if !user.identidad_validada() {
+        } else if let Some(entryuser) = self.usuarios.get_mut(&dni) {
+            if !entryuser.identidad_validada() {
                 return Err(ErrorTransaccion::UsuarioNoValidado);
             }
 
-            let balance = self.balances.get_mut(&dni).expect("Usuario no tiene balances");
+            let balance = entryuser.get_mut_balance();
             balance.agregar_dinero(monto);
 
             let t = Transaccion::IngresoDinero {
                 fecha: Fecha::fecha_actual(),
                 monto,
-                usuario: user.clone()
+                usuario: entryuser.clone_usuario()
             };
-            // si existe el usuario en self.usuarios, tambien debe existir en self.transacciones
-            // ya que se crean al mismo tiempo en registrar_usuario
-            self.transacciones.get_mut(&dni).expect("Usuario no tiene transacciones").push(t.clone());
+            entryuser.add_transaccion(&t);
             Ok(t)
         } else {
             Err(ErrorTransaccion::UsuarioInexistente)
@@ -396,12 +427,12 @@ impl PlataformaXYZ {
     pub fn retirar_dinero(&mut self, dni: u32, monto: f64, medio: MedioPago) -> Result<Transaccion, ErrorTransaccion> {
         if !monto.is_finite() || monto <= 0.0 {
             Err(ErrorTransaccion::MontoInvalido)
-        } else if let Some(user) = self.usuarios.get(&dni) {
-            if !user.identidad_validada() {
+        } else if let Some(entryuser) = self.usuarios.get_mut(&dni) {
+            if !entryuser.identidad_validada() {
                 return Err(ErrorTransaccion::UsuarioNoValidado);
             }
             
-            let balance = self.balances.get_mut(&dni).expect("Usuario no tiene balances");
+            let balance = entryuser.get_mut_balance();
             if !balance.tiene_suficiente_dinero(monto) {
                 return Err(ErrorTransaccion::BalanceInsuficiente);
             }
@@ -410,10 +441,10 @@ impl PlataformaXYZ {
             let t = Transaccion::RetiroDinero {
                 fecha: Fecha::fecha_actual(),
                 monto,
-                usuario: user.clone(),
+                usuario: entryuser.clone_usuario(),
                 medio
             };
-            self.transacciones.get_mut(&dni).expect("Usuario no tiene transacciones").push(t.clone());
+            entryuser.add_transaccion(&t);
             Ok(t)
         } else {
             Err(ErrorTransaccion::UsuarioInexistente)
@@ -423,13 +454,13 @@ impl PlataformaXYZ {
     pub fn comprar_cripto(&mut self, dni: u32, cantidad: f64, cripto: Criptomoneda) -> Result<Transaccion, ErrorTransaccion> {
         if !cantidad.is_finite() || cantidad <= 0.0 {
             Err(ErrorTransaccion::MontoInvalido)
-        } else if let Some(user) = self.usuarios.get(&dni) {
-            if !user.identidad_validada() {
+        } else if let Some(entryuser) = self.usuarios.get_mut(&dni) {
+            if !entryuser.identidad_validada() {
                 return Err(ErrorTransaccion::UsuarioNoValidado);
             }
             
             let cotizacion = PlataformaXYZ::get_cotizacion(&cripto);
-            let balance = self.balances.get_mut(&dni).expect("Usuario no tiene balances");
+            let balance = entryuser.get_mut_balance();
             let monto_a_pagar = cantidad*cotizacion;
             if !balance.tiene_suficiente_dinero(monto_a_pagar) {
                 return Err(ErrorTransaccion::BalanceInsuficiente);
@@ -441,10 +472,10 @@ impl PlataformaXYZ {
                 fecha: Fecha::fecha_actual(),
                 criptomoneda: cripto, 
                 monto: cantidad, 
-                usuario: user.clone(), 
+                usuario: entryuser.clone_usuario(), 
                 cotizacion 
             };
-            self.transacciones.get_mut(&dni).expect("Usuario no tiene transacciones").push(t.clone());
+            entryuser.add_transaccion(&t);
             Ok(t)
         } else {
             Err(ErrorTransaccion::UsuarioInexistente)
@@ -454,13 +485,13 @@ impl PlataformaXYZ {
     pub fn vender_cripto(&mut self, dni: u32, cantidad: f64, cripto: Criptomoneda) -> Result<Transaccion, ErrorTransaccion> {
         if !cantidad.is_finite() || cantidad <= 0.0 {
             Err(ErrorTransaccion::MontoInvalido)
-        } else if let Some(user) = self.usuarios.get(&dni) {
-            if !user.identidad_validada() {
+        } else if let Some(entryuser) = self.usuarios.get_mut(&dni) {
+            if !entryuser.identidad_validada() {
                 return Err(ErrorTransaccion::UsuarioNoValidado);
             }
             
             let cotizacion = PlataformaXYZ::get_cotizacion(&cripto);
-            let balance = self.balances.get_mut(&dni).expect("Usuario no tiene balances");
+            let balance = entryuser.get_mut_balance();
             if !balance.tiene_suficiente_cripto(&cripto, cantidad) {
                 return Err(ErrorTransaccion::BalanceInsuficiente);
             }
@@ -471,10 +502,10 @@ impl PlataformaXYZ {
                 fecha: Fecha::fecha_actual(),
                 criptomoneda: cripto, 
                 monto: cantidad, 
-                usuario: user.clone(), 
+                usuario: entryuser.clone_usuario(), 
                 cotizacion 
             };
-            self.transacciones.get_mut(&dni).expect("Usuario no tiene transacciones").push(t.clone());
+            entryuser.add_transaccion(&t);
             Ok(t)
         } else {
             Err(ErrorTransaccion::UsuarioInexistente)
@@ -484,8 +515,8 @@ impl PlataformaXYZ {
     pub fn retirar_cripto(&mut self, dni: u32, cantidad: f64, cripto: Criptomoneda, blockchain: &Blockchain) -> Result<Transaccion, ErrorTransaccion> {
         if !cantidad.is_finite() || cantidad <= 0.0 {
             Err(ErrorTransaccion::MontoInvalido)
-        } else if let Some(user) = self.usuarios.get(&dni) {
-            if !user.identidad_validada() {
+        } else if let Some(entryuser) = self.usuarios.get_mut(&dni) {
+            if !entryuser.identidad_validada() {
                 return Err(ErrorTransaccion::UsuarioNoValidado);
             }
 
@@ -495,7 +526,7 @@ impl PlataformaXYZ {
             }
             
             let cotizacion = PlataformaXYZ::get_cotizacion(&cripto);
-            let balance = self.balances.get_mut(&dni).expect("Usuario no tiene balances");
+            let balance = entryuser.get_mut_balance();
             if !balance.tiene_suficiente_cripto(&cripto, cantidad) {
                 return Err(ErrorTransaccion::BalanceInsuficiente);
             }
@@ -505,12 +536,12 @@ impl PlataformaXYZ {
                 fecha: Fecha::fecha_actual(),
                 criptomoneda: cripto, 
                 monto: cantidad, 
-                usuario: user.clone(), 
+                usuario: entryuser.clone_usuario(), 
                 cotizacion,
                 blockchain: blockchain.clone(),
                 hash: blockchain.get_hash(&mut self.rng)
             };
-            self.transacciones.get_mut(&dni).expect("Usuario no tiene transacciones").push(t.clone());
+            entryuser.add_transaccion(&t);
             Ok(t)
         } else {
             Err(ErrorTransaccion::UsuarioInexistente)
@@ -520,8 +551,8 @@ impl PlataformaXYZ {
     pub fn recibir_cripto(&mut self, dni: u32, cantidad: f64, cripto: Criptomoneda, blockchain: &Blockchain) -> Result<Transaccion, ErrorTransaccion> {
         if !cantidad.is_finite() || cantidad <= 0.0 {
             Err(ErrorTransaccion::MontoInvalido)
-        } else if let Some(user) = self.usuarios.get(&dni) {
-            if !user.identidad_validada() {
+        } else if let Some(entryuser) = self.usuarios.get_mut(&dni) {
+            if !entryuser.identidad_validada() {
                 return Err(ErrorTransaccion::UsuarioNoValidado);
             }
 
@@ -531,18 +562,18 @@ impl PlataformaXYZ {
             }
             
             let cotizacion = PlataformaXYZ::get_cotizacion(&cripto);
-            let balance = self.balances.get_mut(&dni).expect("Usuario no tiene balances");
+            let balance = entryuser.get_mut_balance();
             balance.agregar_cripto(&cripto, cantidad);
             
             let t = Transaccion::RecepcionCripto { 
                 fecha: Fecha::fecha_actual(),
                 criptomoneda: cripto, 
                 monto: cantidad, 
-                usuario: user.clone(), 
+                usuario: entryuser.clone_usuario(), 
                 cotizacion,
                 blockchain: blockchain.clone()
             };
-            self.transacciones.get_mut(&dni).expect("Usuario no tiene transacciones").push(t.clone());
+            entryuser.add_transaccion(&t);
             Ok(t)
         } else {
             Err(ErrorTransaccion::UsuarioInexistente)
@@ -572,9 +603,13 @@ impl PlataformaXYZ {
         DatosCriptomoneda::from_cripto(&cripto)
     }
 
+    fn get_all_transacciones(&self) -> impl Iterator<Item = &Transaccion> {
+        self.usuarios.values().flat_map(|entryuser| entryuser.transacciones.iter())
+    }
+
     pub fn cripto_mas_vendida(&self) -> DatosCriptomoneda {
         let mut cant_ventas_cripto = [0_usize; 5];
-        self.transacciones.values().flatten().for_each(|t| 
+        self.get_all_transacciones().for_each(|t| 
             if let Transaccion::VentaCripto { criptomoneda, .. } = t {
                 PlataformaXYZ::incrementar_cripto_arr(criptomoneda, &mut cant_ventas_cripto, 1);
             }
@@ -584,7 +619,7 @@ impl PlataformaXYZ {
 
     pub fn cripto_mas_comprada(&self) -> DatosCriptomoneda {
         let mut cant_compras_cripto = [0_usize; 5];
-        self.transacciones.values().flatten().for_each(|t| 
+        self.get_all_transacciones().for_each(|t| 
             if let Transaccion::CompraCripto { criptomoneda, .. } = t {
                 PlataformaXYZ::incrementar_cripto_arr(criptomoneda, &mut cant_compras_cripto, 1);
             }
@@ -594,7 +629,7 @@ impl PlataformaXYZ {
 
     pub fn cripto_mas_volumen_ventas(&self) -> DatosCriptomoneda {
         let mut volumen_ventas_cripto = [0.0; 5];
-        self.transacciones.values().flatten().for_each(|t| 
+        self.get_all_transacciones().for_each(|t| 
             if let Transaccion::VentaCripto { criptomoneda, monto, cotizacion, .. } = t {
                 PlataformaXYZ::incrementar_cripto_arr(criptomoneda, &mut volumen_ventas_cripto, monto*cotizacion);
             }
@@ -604,7 +639,7 @@ impl PlataformaXYZ {
 
     pub fn cripto_mas_volumen_compras(&self) -> DatosCriptomoneda {
         let mut volumen_compras_cripto = [0.0; 5];
-        self.transacciones.values().flatten().for_each(|t| 
+        self.get_all_transacciones().for_each(|t| 
             if let Transaccion::CompraCripto { criptomoneda, monto, cotizacion, .. } = t {
                 PlataformaXYZ::incrementar_cripto_arr(criptomoneda, &mut volumen_compras_cripto, monto*cotizacion);
             }
