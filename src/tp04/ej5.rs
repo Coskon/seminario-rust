@@ -1,6 +1,7 @@
 #![allow(unused)]
 use std::collections::{BTreeMap, HashMap, btree_map::Entry};
 use crate::tp03::ej3::Fecha;
+use std::fmt::{Display, Formatter};
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Usuario {
@@ -62,6 +63,10 @@ impl Blockchain {
         self.nombre.clone() + &num.to_string()
     }
 
+    pub fn prefijo(&self) -> String {
+        self.prefijo.clone()
+    }
+
     pub fn bitcoin() -> Self {
         Blockchain { nombre: "Bitcoin".to_string(), prefijo: "BTC".to_string() }
     }
@@ -101,6 +106,10 @@ impl Criptomoneda {
 
     pub fn lista_prefijos() -> [String; 5] {
         [Criptomoneda::Bitcoin.prefijo(), Criptomoneda::Tether.prefijo(), Criptomoneda::Ethereum.prefijo(), Criptomoneda::USDCoin.prefijo(), Criptomoneda::ShibaInu.prefijo()]
+    }
+
+    pub fn lista_blockchain_prefijos(&self) -> Vec<String> {
+        DatosCriptomoneda::from_cripto(self).blockchains.iter().map(|b| b.prefijo()).collect()
     }
 }
 
@@ -275,7 +284,7 @@ impl Transaccion {
     pub fn validar_retiro_cripto(&self, dni_validar: u32, monto_validar: f64, cripto_validar: Criptomoneda, cotizacion_validar: f64, blockchain_validar: &str, hash_validar: &str) -> bool {
         match self {
             Transaccion::RetiroCripto { monto, usuario, criptomoneda, cotizacion, hash, blockchain,  .. } => 
-                *monto == monto_validar && usuario.dni == dni_validar && *criptomoneda == cripto_validar && *cotizacion == cotizacion_validar && *hash == hash_validar && blockchain.prefijo == blockchain_validar,
+                *monto == monto_validar && usuario.dni == dni_validar && *criptomoneda == cripto_validar && *cotizacion == cotizacion_validar && *hash == hash_validar && blockchain.prefijo() == blockchain_validar,
             _ => false
         }
     }
@@ -283,20 +292,39 @@ impl Transaccion {
     pub fn validar_recepcion_cripto(&self, dni_validar: u32, monto_validar: f64, cripto_validar: Criptomoneda, cotizacion_validar: f64, blockchain_validar: &str) -> bool {
         match self {
             Transaccion::RecepcionCripto { monto, usuario, criptomoneda, cotizacion, blockchain, .. } => 
-                *monto == monto_validar && usuario.dni == dni_validar && *criptomoneda == cripto_validar && *cotizacion == cotizacion_validar && blockchain.prefijo == blockchain_validar,
+                *monto == monto_validar && usuario.dni == dni_validar && *criptomoneda == cripto_validar && *cotizacion == cotizacion_validar && blockchain.prefijo() == blockchain_validar,
             _ => false
         }
     }
 }
 
 #[derive(PartialEq, Debug, Clone)]
-pub enum ErrorTransaccion {
-    UsuarioInexistente, MontoInvalido, BalanceInsuficiente, UsuarioNoValidado, BlockchainInvalida
+pub enum ErrorPlataforma {
+    UsuarioYaExiste(u32), UsuarioInexistente(u32), UsuarioNoValidado(u32), MontoInvalido(f64), 
+    BalanceInsuficiente {
+        dni: u32,
+        prefijo: String,
+        disponible: f64,
+        a_pagar: f64
+    }, 
+    BlockchainInvalida {
+        blockchain: String,
+        cripto: String,
+        validas: Vec<String>
+    }
 }
 
-#[derive(PartialEq, Debug, Clone)]
-pub enum ErrorUsuario {
-    UsuarioYaExiste, UsuarioInexistente
+impl Display for ErrorPlataforma {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ErrorPlataforma::UsuarioYaExiste(dni) => write!(f, "Usuario {dni} ya existe"),
+            ErrorPlataforma::UsuarioInexistente(dni) => write!(f, "Usuario {dni} no existe"),
+            ErrorPlataforma::UsuarioNoValidado(dni) => write!(f, "Usuario {dni} no fue validado"),
+            ErrorPlataforma::MontoInvalido(monto) => write!(f, "Monto {monto} es invalido (cero, negativo, infinito o NaN)"),
+            ErrorPlataforma::BalanceInsuficiente { dni, prefijo, disponible, a_pagar } => write!(f, "Usuario {dni} tiene balance {prefijo}{disponible}, insuficiente para pagar {prefijo}{a_pagar}"),
+            ErrorPlataforma::BlockchainInvalida { blockchain, cripto, validas } => write!(f, "Blockchain {blockchain} es invalida para criptomoneda {cripto}, blockchain validas: {validas:?}")
+        }
+    }
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -357,10 +385,10 @@ impl PlataformaXYZ {
         }
     }
 
-    pub fn registrar_usuario(&mut self, usuario: Usuario) -> Result<(), ErrorUsuario> {
+    pub fn registrar_usuario(&mut self, usuario: Usuario) -> Result<(), ErrorPlataforma> {
         let dni = usuario.dni;
         match self.usuarios.entry(dni) {
-            Entry::Occupied(v) => Err(ErrorUsuario::UsuarioYaExiste),
+            Entry::Occupied(v) => Err(ErrorPlataforma::UsuarioYaExiste(dni)),
             Entry::Vacant(v) => {
                 v.insert(EntryUsuario { usuario, transacciones: vec![], balance: Balance::default() });
                 Ok(())
@@ -368,45 +396,45 @@ impl PlataformaXYZ {
         }
     }
 
-    pub fn validar_usuario(&mut self, dni: u32) -> Result<(), ErrorUsuario> {
+    pub fn validar_usuario(&mut self, dni: u32) -> Result<(), ErrorPlataforma> {
         if let Some(entryuser) = self.usuarios.get_mut(&dni) {
             entryuser.get_mut_usuario().validar_identidad();
             Ok(())
         } else {
-            Err(ErrorUsuario::UsuarioInexistente)
+            Err(ErrorPlataforma::UsuarioInexistente(dni))
         }
     }
 
-    pub fn get_usuario(&self, dni: u32) -> Result<&Usuario, ErrorUsuario> {
+    pub fn get_usuario(&self, dni: u32) -> Result<&Usuario, ErrorPlataforma> {
         if let Some(entryuser) = self.usuarios.get(&dni) {
             Ok(entryuser.get_usuario())
         } else {
-            Err(ErrorUsuario::UsuarioInexistente)
+            Err(ErrorPlataforma::UsuarioInexistente(dni))
         }
     }
 
-    pub fn get_balance_cripto_usuario(&self, dni: u32, cripto: Criptomoneda) -> Result<f64, ErrorUsuario> {
+    pub fn get_balance_cripto_usuario(&self, dni: u32, cripto: Criptomoneda) -> Result<f64, ErrorPlataforma> {
         if let Some(entryuser) = self.usuarios.get(&dni) {
             Ok(entryuser.get_balance().get_cripto(&cripto))
         } else {
-            Err(ErrorUsuario::UsuarioInexistente)
+            Err(ErrorPlataforma::UsuarioInexistente(dni))
         }
     }
 
-    pub fn get_balance_usuario(&self, dni: u32) -> Result<f64, ErrorUsuario> {
+    pub fn get_balance_usuario(&self, dni: u32) -> Result<f64, ErrorPlataforma> {
         if let Some(entryuser) = self.usuarios.get(&dni) {
             Ok(entryuser.get_balance().get_dinero())
         } else {
-            Err(ErrorUsuario::UsuarioInexistente)
+            Err(ErrorPlataforma::UsuarioInexistente(dni))
         }
     }
 
-    pub fn ingresar_dinero(&mut self, dni: u32, monto: f64) -> Result<Transaccion, ErrorTransaccion> {
+    pub fn ingresar_dinero(&mut self, dni: u32, monto: f64) -> Result<Transaccion, ErrorPlataforma> {
         if !monto.is_finite() || monto <= 0.0 {
-            Err(ErrorTransaccion::MontoInvalido)
+            Err(ErrorPlataforma::MontoInvalido(monto))
         } else if let Some(entryuser) = self.usuarios.get_mut(&dni) {
             if !entryuser.identidad_validada() {
-                return Err(ErrorTransaccion::UsuarioNoValidado);
+                return Err(ErrorPlataforma::UsuarioNoValidado(dni));
             }
 
             let balance = entryuser.get_mut_balance();
@@ -420,21 +448,21 @@ impl PlataformaXYZ {
             entryuser.add_transaccion(&t);
             Ok(t)
         } else {
-            Err(ErrorTransaccion::UsuarioInexistente)
+            Err(ErrorPlataforma::UsuarioInexistente(dni))
         }
     }
 
-    pub fn retirar_dinero(&mut self, dni: u32, monto: f64, medio: MedioPago) -> Result<Transaccion, ErrorTransaccion> {
+    pub fn retirar_dinero(&mut self, dni: u32, monto: f64, medio: MedioPago) -> Result<Transaccion, ErrorPlataforma> {
         if !monto.is_finite() || monto <= 0.0 {
-            Err(ErrorTransaccion::MontoInvalido)
+            Err(ErrorPlataforma::MontoInvalido(monto))
         } else if let Some(entryuser) = self.usuarios.get_mut(&dni) {
             if !entryuser.identidad_validada() {
-                return Err(ErrorTransaccion::UsuarioNoValidado);
+                return Err(ErrorPlataforma::UsuarioNoValidado(dni));
             }
             
             let balance = entryuser.get_mut_balance();
             if !balance.tiene_suficiente_dinero(monto) {
-                return Err(ErrorTransaccion::BalanceInsuficiente);
+                return Err(ErrorPlataforma::BalanceInsuficiente{dni, prefijo: "$".to_string(), disponible: balance.get_dinero(), a_pagar: monto});
             }
             balance.quitar_dinero(monto);
 
@@ -447,23 +475,23 @@ impl PlataformaXYZ {
             entryuser.add_transaccion(&t);
             Ok(t)
         } else {
-            Err(ErrorTransaccion::UsuarioInexistente)
+            Err(ErrorPlataforma::UsuarioInexistente(dni))
         }
     }
 
-    pub fn comprar_cripto(&mut self, dni: u32, cantidad: f64, cripto: Criptomoneda) -> Result<Transaccion, ErrorTransaccion> {
+    pub fn comprar_cripto(&mut self, dni: u32, cantidad: f64, cripto: Criptomoneda) -> Result<Transaccion, ErrorPlataforma> {
         if !cantidad.is_finite() || cantidad <= 0.0 {
-            Err(ErrorTransaccion::MontoInvalido)
+            Err(ErrorPlataforma::MontoInvalido(cantidad))
         } else if let Some(entryuser) = self.usuarios.get_mut(&dni) {
             if !entryuser.identidad_validada() {
-                return Err(ErrorTransaccion::UsuarioNoValidado);
+                return Err(ErrorPlataforma::UsuarioNoValidado(dni));
             }
             
             let cotizacion = PlataformaXYZ::get_cotizacion(&cripto);
             let balance = entryuser.get_mut_balance();
             let monto_a_pagar = cantidad*cotizacion;
             if !balance.tiene_suficiente_dinero(monto_a_pagar) {
-                return Err(ErrorTransaccion::BalanceInsuficiente);
+                return Err(ErrorPlataforma::BalanceInsuficiente{dni, prefijo: "$".to_string(), disponible: balance.get_dinero(), a_pagar: monto_a_pagar});
             }
             balance.quitar_dinero(monto_a_pagar);
             balance.agregar_cripto(&cripto, cantidad);
@@ -478,22 +506,22 @@ impl PlataformaXYZ {
             entryuser.add_transaccion(&t);
             Ok(t)
         } else {
-            Err(ErrorTransaccion::UsuarioInexistente)
+            Err(ErrorPlataforma::UsuarioInexistente(dni))
         }
     }
 
-    pub fn vender_cripto(&mut self, dni: u32, cantidad: f64, cripto: Criptomoneda) -> Result<Transaccion, ErrorTransaccion> {
+    pub fn vender_cripto(&mut self, dni: u32, cantidad: f64, cripto: Criptomoneda) -> Result<Transaccion, ErrorPlataforma> {
         if !cantidad.is_finite() || cantidad <= 0.0 {
-            Err(ErrorTransaccion::MontoInvalido)
+            Err(ErrorPlataforma::MontoInvalido(cantidad))
         } else if let Some(entryuser) = self.usuarios.get_mut(&dni) {
             if !entryuser.identidad_validada() {
-                return Err(ErrorTransaccion::UsuarioNoValidado);
+                return Err(ErrorPlataforma::UsuarioNoValidado(dni));
             }
             
             let cotizacion = PlataformaXYZ::get_cotizacion(&cripto);
             let balance = entryuser.get_mut_balance();
             if !balance.tiene_suficiente_cripto(&cripto, cantidad) {
-                return Err(ErrorTransaccion::BalanceInsuficiente);
+                return Err(ErrorPlataforma::BalanceInsuficiente{dni, prefijo: cripto.prefijo(), disponible: balance.get_dinero(), a_pagar: cantidad});
             }
             balance.quitar_cripto(&cripto, cantidad);
             balance.agregar_dinero(cantidad*cotizacion);
@@ -508,27 +536,27 @@ impl PlataformaXYZ {
             entryuser.add_transaccion(&t);
             Ok(t)
         } else {
-            Err(ErrorTransaccion::UsuarioInexistente)
+            Err(ErrorPlataforma::UsuarioInexistente(dni))
         }
     }
 
-    pub fn retirar_cripto(&mut self, dni: u32, cantidad: f64, cripto: Criptomoneda, blockchain: &Blockchain) -> Result<Transaccion, ErrorTransaccion> {
+    pub fn retirar_cripto(&mut self, dni: u32, cantidad: f64, cripto: Criptomoneda, blockchain: &Blockchain) -> Result<Transaccion, ErrorPlataforma> {
         if !cantidad.is_finite() || cantidad <= 0.0 {
-            Err(ErrorTransaccion::MontoInvalido)
+            Err(ErrorPlataforma::MontoInvalido(cantidad))
         } else if let Some(entryuser) = self.usuarios.get_mut(&dni) {
             if !entryuser.identidad_validada() {
-                return Err(ErrorTransaccion::UsuarioNoValidado);
+                return Err(ErrorPlataforma::UsuarioNoValidado(dni));
             }
 
             let cm = DatosCriptomoneda::from_cripto(&cripto);
             if !cm.blockchains.contains(blockchain) {
-                return Err(ErrorTransaccion::BlockchainInvalida);
+                return Err(ErrorPlataforma::BlockchainInvalida { blockchain: blockchain.prefijo(), cripto: cripto.prefijo(), validas: cripto.lista_blockchain_prefijos() });
             }
             
             let cotizacion = PlataformaXYZ::get_cotizacion(&cripto);
             let balance = entryuser.get_mut_balance();
             if !balance.tiene_suficiente_cripto(&cripto, cantidad) {
-                return Err(ErrorTransaccion::BalanceInsuficiente);
+                return Err(ErrorPlataforma::BalanceInsuficiente{dni, prefijo: cripto.prefijo(), disponible: balance.get_dinero(), a_pagar: cantidad});
             }
             balance.quitar_cripto(&cripto, cantidad);
             
@@ -544,21 +572,21 @@ impl PlataformaXYZ {
             entryuser.add_transaccion(&t);
             Ok(t)
         } else {
-            Err(ErrorTransaccion::UsuarioInexistente)
+            Err(ErrorPlataforma::UsuarioInexistente(dni))
         }
     }
 
-    pub fn recibir_cripto(&mut self, dni: u32, cantidad: f64, cripto: Criptomoneda, blockchain: &Blockchain) -> Result<Transaccion, ErrorTransaccion> {
+    pub fn recibir_cripto(&mut self, dni: u32, cantidad: f64, cripto: Criptomoneda, blockchain: &Blockchain) -> Result<Transaccion, ErrorPlataforma> {
         if !cantidad.is_finite() || cantidad <= 0.0 {
-            Err(ErrorTransaccion::MontoInvalido)
+            Err(ErrorPlataforma::MontoInvalido(cantidad))
         } else if let Some(entryuser) = self.usuarios.get_mut(&dni) {
             if !entryuser.identidad_validada() {
-                return Err(ErrorTransaccion::UsuarioNoValidado);
+                return Err(ErrorPlataforma::UsuarioNoValidado(dni));
             }
 
             let cm = DatosCriptomoneda::from_cripto(&cripto);
             if !cm.blockchains.contains(blockchain) {
-                return Err(ErrorTransaccion::BlockchainInvalida);
+                return Err(ErrorPlataforma::BlockchainInvalida { blockchain: blockchain.prefijo(), cripto: cripto.prefijo(), validas: cripto.lista_blockchain_prefijos() });
             }
             
             let cotizacion = PlataformaXYZ::get_cotizacion(&cripto);
@@ -576,7 +604,7 @@ impl PlataformaXYZ {
             entryuser.add_transaccion(&t);
             Ok(t)
         } else {
-            Err(ErrorTransaccion::UsuarioInexistente)
+            Err(ErrorPlataforma::UsuarioInexistente(dni))
         }
     }
 
@@ -736,19 +764,19 @@ mod tests {
 
         assert!(p.registrar_usuario( // exactamente mismo usuario que el primero
             Usuario::new("Pedro", "Perez", "pedro.perez@gmail.com", 41_192_387)
-        ).is_err_and(|e| e == ErrorUsuario::UsuarioYaExiste));
+        ).is_err_and(|e| e == ErrorPlataforma::UsuarioYaExiste(41_192_387)));
         assert!(p.registrar_usuario( // solo dni igual
             Usuario::new("Juan", "Paredes", "juan.paredes@gmail.com", 41_192_387)
-        ).is_err_and(|e| e == ErrorUsuario::UsuarioYaExiste));
+        ).is_err_and(|e| e == ErrorPlataforma::UsuarioYaExiste(41_192_387)));
 
         assert!(p.get_usuario(41_192_387).is_ok_and(|u| u.dni == 41_192_387 && u.nombre == "Pedro"));
         assert!(p.get_usuario(38_998_761).is_ok_and(|u| u.dni == 38_998_761 && u.nombre == "Maria"));
-        assert!(p.get_usuario(12_345_678).is_err_and(|e| e == ErrorUsuario::UsuarioInexistente));
+        assert!(p.get_usuario(12_345_678).is_err_and(|e| e == ErrorPlataforma::UsuarioInexistente(12_345_678)));
 
         assert!(p.get_balance_usuario(41_192_387).is_ok_and(|b| b == 0.0));
         assert!(p.get_balance_cripto_usuario(41_192_387, Criptomoneda::Bitcoin).is_ok_and(|b| b == 0.0));
-        assert!(p.get_balance_usuario(12_345_678).is_err_and(|e| e == ErrorUsuario::UsuarioInexistente));
-        assert!(p.get_balance_cripto_usuario(12_345_678, Criptomoneda::Ethereum).is_err_and(|e| e == ErrorUsuario::UsuarioInexistente));
+        assert!(p.get_balance_usuario(12_345_678).is_err_and(|e| e == ErrorPlataforma::UsuarioInexistente(12_345_678)));
+        assert!(p.get_balance_cripto_usuario(12_345_678, Criptomoneda::Ethereum).is_err_and(|e| e == ErrorPlataforma::UsuarioInexistente(12_345_678)));
     }
 
     fn crear_plataforma_base() -> PlataformaXYZ {
@@ -833,8 +861,8 @@ mod tests {
     #[test]
     fn validar_usuario_inexistente() {
         let mut p = PlataformaXYZ::new(Rng::TEST_SEED);
-        assert!(p.validar_usuario(12_345_678).is_err_and(|e| e == ErrorUsuario::UsuarioInexistente));
-        assert!(p.validar_usuario(41_192_387).is_err_and(|e| e == ErrorUsuario::UsuarioInexistente));
+        assert!(p.validar_usuario(12_345_678).is_err_and(|e| e == ErrorPlataforma::UsuarioInexistente(12_345_678)));
+        assert!(p.validar_usuario(41_192_387).is_err_and(|e| e == ErrorPlataforma::UsuarioInexistente(41_192_387)));
     }
 
     #[test]
@@ -871,13 +899,13 @@ mod tests {
         let mut p = crear_plataforma_base();
         assert!(p.validar_usuario(41_192_387).is_ok());
 
-        assert!(p.ingresar_dinero(41_192_387, -5.0).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.ingresar_dinero(41_192_387, 0.0).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.ingresar_dinero(41_192_387, 0.0_f64.next_down()).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.ingresar_dinero(41_192_387, f64::MIN).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.ingresar_dinero(41_192_387, f64::INFINITY).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.ingresar_dinero(41_192_387, f64::NEG_INFINITY).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.ingresar_dinero(41_192_387, f64::NAN).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
+        assert!(p.ingresar_dinero(41_192_387, -5.0).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(-5.0)));
+        assert!(p.ingresar_dinero(41_192_387, 0.0).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(0.0)));
+        assert!(p.ingresar_dinero(41_192_387, 0.0_f64.next_down()).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(0.0_f64.next_down())));
+        assert!(p.ingresar_dinero(41_192_387, f64::MIN).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::MIN)));
+        assert!(p.ingresar_dinero(41_192_387, f64::INFINITY).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::INFINITY)));
+        assert!(p.ingresar_dinero(41_192_387, f64::NEG_INFINITY).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::NEG_INFINITY)));
+        assert!(p.ingresar_dinero(41_192_387, f64::NAN).is_err_and(|e| matches!(e, ErrorPlataforma::MontoInvalido(v) if v.is_nan())));
     
         // comprobar que no se haya realizado ninguna transaccion
         assert!(p.get_balance_usuario(41_192_387).is_ok_and(|b| b == 0.0));
@@ -886,8 +914,8 @@ mod tests {
     #[test]
     fn ingresar_dinero_error_usuarios() {
         let mut p = crear_plataforma_base();
-        assert!(p.ingresar_dinero(41_192_387, 150.0).is_err_and(|e| e == ErrorTransaccion::UsuarioNoValidado));
-        assert!(p.ingresar_dinero(12_345_678, 999.0).is_err_and(|e| e == ErrorTransaccion::UsuarioInexistente));
+        assert!(p.ingresar_dinero(41_192_387, 150.0).is_err_and(|e| e == ErrorPlataforma::UsuarioNoValidado(41_192_387)));
+        assert!(p.ingresar_dinero(12_345_678, 999.0).is_err_and(|e| e == ErrorPlataforma::UsuarioInexistente(12_345_678)));
     }
 
     #[test]
@@ -916,13 +944,13 @@ mod tests {
         let mut p = crear_plataforma_base();
         assert!(p.validar_usuario(41_192_387).is_ok());
 
-        assert!(p.retirar_dinero(41_192_387, -5.0, MedioPago::Transferencia).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.retirar_dinero(41_192_387, 0.0, MedioPago::Transferencia).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.retirar_dinero(41_192_387, f64::MIN, MedioPago::Transferencia).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.retirar_dinero(41_192_387, f64::INFINITY, MedioPago::Transferencia).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.retirar_dinero(41_192_387, f64::NEG_INFINITY, MedioPago::Transferencia).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.retirar_dinero(41_192_387, f64::NAN, MedioPago::Transferencia).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.retirar_dinero(41_192_387, 0.0_f64.next_down(), MedioPago::Transferencia).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
+        assert!(p.retirar_dinero(41_192_387, -5.0, MedioPago::Transferencia).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(-5.0)));
+        assert!(p.retirar_dinero(41_192_387, 0.0, MedioPago::Transferencia).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(0.0)));
+        assert!(p.retirar_dinero(41_192_387, f64::MIN, MedioPago::Transferencia).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::MIN)));
+        assert!(p.retirar_dinero(41_192_387, f64::INFINITY, MedioPago::Transferencia).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::INFINITY)));
+        assert!(p.retirar_dinero(41_192_387, f64::NEG_INFINITY, MedioPago::Transferencia).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::NEG_INFINITY)));
+        assert!(p.retirar_dinero(41_192_387, f64::NAN, MedioPago::Transferencia).is_err_and(|e| matches!(e, ErrorPlataforma::MontoInvalido(v) if v.is_nan())));
+        assert!(p.retirar_dinero(41_192_387, 0.0_f64.next_down(), MedioPago::Transferencia).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(0.0_f64.next_down())));
     
         // comprobar que no se haya realizado ninguna transaccion
         assert!(p.get_balance_usuario(41_192_387).is_ok_and(|b| b == 0.0));
@@ -931,8 +959,8 @@ mod tests {
     #[test]
     fn retirar_dinero_error_usuarios() {
         let mut p = crear_plataforma_base();
-        assert!(p.retirar_dinero(41_192_387, 150.0, MedioPago::Transferencia).is_err_and(|e| e == ErrorTransaccion::UsuarioNoValidado));
-        assert!(p.retirar_dinero(12_345_678, 999.0, MedioPago::Transferencia).is_err_and(|e| e == ErrorTransaccion::UsuarioInexistente));
+        assert!(p.retirar_dinero(41_192_387, 150.0, MedioPago::Transferencia).is_err_and(|e| e == ErrorPlataforma::UsuarioNoValidado(41_192_387)));
+        assert!(p.retirar_dinero(12_345_678, 999.0, MedioPago::Transferencia).is_err_and(|e| e == ErrorPlataforma::UsuarioInexistente(12_345_678)));
     }
 
     #[test]
@@ -940,9 +968,9 @@ mod tests {
         let mut p = crear_plataforma_base();
         assert!(p.validar_usuario(41_192_387).is_ok());
 
-        assert!(p.retirar_dinero(41_192_387, 300.0, MedioPago::Transferencia).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
-        assert!(p.retirar_dinero(41_192_387, f64::MAX, MedioPago::Transferencia).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
-        assert!(p.retirar_dinero(41_192_387, 0.0_f64.next_up(), MedioPago::Transferencia).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
+        assert!(p.retirar_dinero(41_192_387, 300.0, MedioPago::Transferencia).is_err_and(|e| e == ErrorPlataforma::BalanceInsuficiente { dni: 41_192_387, prefijo: "$".to_string(), disponible: 0.0, a_pagar: 300.0 }));
+        assert!(p.retirar_dinero(41_192_387, f64::MAX, MedioPago::Transferencia).is_err_and(|e| e == ErrorPlataforma::BalanceInsuficiente { dni: 41_192_387, prefijo: "$".to_string(), disponible: 0.0, a_pagar: f64::MAX }));
+        assert!(p.retirar_dinero(41_192_387, 0.0_f64.next_up(), MedioPago::Transferencia).is_err_and(|e| e == ErrorPlataforma::BalanceInsuficiente { dni: 41_192_387, prefijo: "$".to_string(), disponible: 0.0, a_pagar: 0.0_f64.next_up() }));
 
         assert!(p.get_balance_usuario(41_192_387).is_ok_and(|b| b == 0.0));
     }
@@ -974,13 +1002,13 @@ mod tests {
         let mut p = crear_plataforma_base();
         assert!(p.validar_usuario(41_192_387).is_ok());
 
-        assert!(p.comprar_cripto(41_192_387, -5.0, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.comprar_cripto(41_192_387, 0.0, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.comprar_cripto(41_192_387, f64::MIN, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.comprar_cripto(41_192_387, f64::INFINITY, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.comprar_cripto(41_192_387, f64::NEG_INFINITY, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.comprar_cripto(41_192_387, f64::NAN, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.comprar_cripto(41_192_387, 0.0_f64.next_down(), Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
+        assert!(p.comprar_cripto(41_192_387, -5.0, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(-5.0)));
+        assert!(p.comprar_cripto(41_192_387, 0.0, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(0.0)));
+        assert!(p.comprar_cripto(41_192_387, f64::MIN, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::MIN)));
+        assert!(p.comprar_cripto(41_192_387, f64::INFINITY, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::INFINITY)));
+        assert!(p.comprar_cripto(41_192_387, f64::NEG_INFINITY, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::NEG_INFINITY)));
+        assert!(p.comprar_cripto(41_192_387, f64::NAN, Criptomoneda::Bitcoin).is_err_and(|e| matches!(e, ErrorPlataforma::MontoInvalido(v) if v.is_nan())));
+        assert!(p.comprar_cripto(41_192_387, 0.0_f64.next_down(), Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(0.0_f64.next_down())));
     
         // comprobar que no se haya realizado ninguna transaccion
         assert!(p.get_balance_usuario(41_192_387).is_ok_and(|b| b == 0.0));
@@ -990,8 +1018,8 @@ mod tests {
     #[test]
     fn comprar_cripto_error_usuarios() {
         let mut p = crear_plataforma_base();
-        assert!(p.comprar_cripto(41_192_387, 0.015, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::UsuarioNoValidado));
-        assert!(p.comprar_cripto(12_345_678, 0.015, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::UsuarioInexistente));
+        assert!(p.comprar_cripto(41_192_387, 0.015, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::UsuarioNoValidado(41_192_387)));
+        assert!(p.comprar_cripto(12_345_678, 0.015, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::UsuarioInexistente(12_345_678)));
     }
 
     #[test]
@@ -999,9 +1027,10 @@ mod tests {
         let mut p = crear_plataforma_base();
         assert!(p.validar_usuario(41_192_387).is_ok());
 
-        assert!(p.comprar_cripto(41_192_387, 300.0, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
-        assert!(p.comprar_cripto(41_192_387, f64::MAX, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
-        assert!(p.comprar_cripto(41_192_387, 0.0_f64.next_up(), Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
+        let btc_coti = PlataformaXYZ::get_cotizacion(&Criptomoneda::Bitcoin);
+        assert!(p.comprar_cripto(41_192_387, 300.0, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::BalanceInsuficiente { dni: 41_192_387, prefijo: "$".to_string(), disponible: 0.0, a_pagar: 300.0*btc_coti }));
+        assert!(p.comprar_cripto(41_192_387, f64::MAX, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::BalanceInsuficiente { dni: 41_192_387, prefijo: "$".to_string(), disponible: 0.0, a_pagar: f64::MAX*btc_coti }));
+        assert!(p.comprar_cripto(41_192_387, 0.0_f64.next_up(), Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::BalanceInsuficiente { dni: 41_192_387, prefijo: "$".to_string(), disponible: 0.0, a_pagar: 0.0_f64.next_up()*btc_coti }));
     
         // comprobar que no se haya realizado ninguna transaccion
         assert!(p.get_balance_usuario(41_192_387).is_ok_and(|b| b == 0.0));
@@ -1036,13 +1065,13 @@ mod tests {
         let mut p = crear_plataforma_base();
         assert!(p.validar_usuario(41_192_387).is_ok());
 
-        assert!(p.vender_cripto(41_192_387, -5.0, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.vender_cripto(41_192_387, 0.0, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.vender_cripto(41_192_387, f64::MIN, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.vender_cripto(41_192_387, f64::INFINITY, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.vender_cripto(41_192_387, f64::NEG_INFINITY, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.vender_cripto(41_192_387, f64::NAN, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.vender_cripto(41_192_387, 0.0_f64.next_down(), Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
+        assert!(p.vender_cripto(41_192_387, -5.0, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(-5.0)));
+        assert!(p.vender_cripto(41_192_387, 0.0, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(0.0)));
+        assert!(p.vender_cripto(41_192_387, f64::MIN, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::MIN)));
+        assert!(p.vender_cripto(41_192_387, f64::INFINITY, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::INFINITY)));
+        assert!(p.vender_cripto(41_192_387, f64::NEG_INFINITY, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::NEG_INFINITY)));
+        assert!(p.vender_cripto(41_192_387, f64::NAN, Criptomoneda::Bitcoin).is_err_and(|e| matches!(e, ErrorPlataforma::MontoInvalido(v) if v.is_nan())));
+        assert!(p.vender_cripto(41_192_387, 0.0_f64.next_down(), Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(0.0_f64.next_down())));
     
         // comprobar que no se haya realizado ninguna transaccion
         assert!(p.get_balance_usuario(41_192_387).is_ok_and(|b| b == 0.0));
@@ -1052,8 +1081,8 @@ mod tests {
     #[test]
     fn vender_cripto_error_usuarios() {
         let mut p = crear_plataforma_base();
-        assert!(p.vender_cripto(41_192_387, 0.015, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::UsuarioNoValidado));
-        assert!(p.vender_cripto(12_345_678, 0.015, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorTransaccion::UsuarioInexistente));
+        assert!(p.vender_cripto(41_192_387, 0.015, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::UsuarioNoValidado(41_192_387)));
+        assert!(p.vender_cripto(12_345_678, 0.015, Criptomoneda::Bitcoin).is_err_and(|e| e == ErrorPlataforma::UsuarioInexistente(12_345_678)));
     }
 
     #[test]
@@ -1061,9 +1090,9 @@ mod tests {
         let mut p = crear_plataforma_base();
         assert!(p.validar_usuario(41_192_387).is_ok());
 
-        assert!(p.vender_cripto(41_192_387, 1.0, Criptomoneda::USDCoin).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
-        assert!(p.vender_cripto(41_192_387, f64::MAX, Criptomoneda::USDCoin).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
-        assert!(p.vender_cripto(41_192_387, 0.0_f64.next_up(), Criptomoneda::USDCoin).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
+        assert!(p.vender_cripto(41_192_387, 1.0, Criptomoneda::USDCoin).is_err_and(|e| e == ErrorPlataforma::BalanceInsuficiente { dni: 41_192_387, prefijo: Criptomoneda::USDCoin.prefijo(), disponible: 0.0, a_pagar: 1.0 }));
+        assert!(p.vender_cripto(41_192_387, f64::MAX, Criptomoneda::USDCoin).is_err_and(|e| e == ErrorPlataforma::BalanceInsuficiente { dni: 41_192_387, prefijo: Criptomoneda::USDCoin.prefijo(), disponible: 0.0, a_pagar: f64::MAX }));
+        assert!(p.vender_cripto(41_192_387, 0.0_f64.next_up(), Criptomoneda::USDCoin).is_err_and(|e| e == ErrorPlataforma::BalanceInsuficiente { dni: 41_192_387, prefijo: Criptomoneda::USDCoin.prefijo(), disponible: 0.0, a_pagar: 0.0_f64.next_up() }));
     
         // comprobar que no se haya realizado ninguna transaccion
         assert!(p.get_balance_usuario(41_192_387).is_ok_and(|b| b == 0.0));
@@ -1082,13 +1111,13 @@ mod tests {
         let dcm = DatosCriptomoneda::ethereum();
         let bc = dcm.blockchains.last().expect("Cripto no tiene blockchains");
         assert!(p.retirar_cripto(41_192_387, 250.0, Criptomoneda::Ethereum, bc).is_ok_and(
-            |t| t.validar_retiro_cripto(41_192_387, 250.0, Criptomoneda::Ethereum, eth_coti, &bc.prefijo, "Ethereum304805589531039275") && 
-                !t.validar_recepcion_cripto(41_192_387, 250.0, Criptomoneda::Ethereum, eth_coti, &bc.prefijo)
+            |t| t.validar_retiro_cripto(41_192_387, 250.0, Criptomoneda::Ethereum, eth_coti, &bc.prefijo(), "Ethereum304805589531039275") && 
+                !t.validar_recepcion_cripto(41_192_387, 250.0, Criptomoneda::Ethereum, eth_coti, &bc.prefijo())
         ));
         assert!(p.get_balance_cripto_usuario(41_192_387, Criptomoneda::Ethereum).is_ok_and(|v| v == 500.0 - 250.0));
         
         assert!(p.retirar_cripto(41_192_387, 0.0_f64.next_up(), Criptomoneda::Ethereum, bc).is_ok_and(
-            |t| t.validar_retiro_cripto(41_192_387, 0.0_f64.next_up(), Criptomoneda::Ethereum, eth_coti, &bc.prefijo, "Ethereum2147874104627985986")
+            |t| t.validar_retiro_cripto(41_192_387, 0.0_f64.next_up(), Criptomoneda::Ethereum, eth_coti, &bc.prefijo(), "Ethereum2147874104627985986")
         ));
         assert!(p.get_balance_cripto_usuario(41_192_387, Criptomoneda::Ethereum).is_ok_and(|v| v == 500.0 - 250.0 - 0.0_f64.next_up()));
     }
@@ -1100,13 +1129,13 @@ mod tests {
 
         let dcm = DatosCriptomoneda::tether();
         let bc = dcm.blockchains.last().expect("Cripto no tiene blockchains");
-        assert!(p.retirar_cripto(41_192_387, -5.0, Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.retirar_cripto(41_192_387, 0.0, Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.retirar_cripto(41_192_387, f64::MIN, Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.retirar_cripto(41_192_387, f64::INFINITY, Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.retirar_cripto(41_192_387, f64::NEG_INFINITY, Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.retirar_cripto(41_192_387, f64::NAN, Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.retirar_cripto(41_192_387, 0.0_f64.next_down(), Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
+        assert!(p.retirar_cripto(41_192_387, -5.0, Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(-5.0)));
+        assert!(p.retirar_cripto(41_192_387, 0.0, Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(0.0)));
+        assert!(p.retirar_cripto(41_192_387, f64::MIN, Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::MIN)));
+        assert!(p.retirar_cripto(41_192_387, f64::INFINITY, Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::INFINITY)));
+        assert!(p.retirar_cripto(41_192_387, f64::NEG_INFINITY, Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::NEG_INFINITY)));
+        assert!(p.retirar_cripto(41_192_387, f64::NAN, Criptomoneda::Tether, bc).is_err_and(|e| matches!(e, ErrorPlataforma::MontoInvalido(v) if v.is_nan())));
+        assert!(p.retirar_cripto(41_192_387, 0.0_f64.next_down(), Criptomoneda::Tether, bc).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(0.0_f64.next_down())));
     
         // comprobar que no se haya realizado ninguna transaccion
         assert!(p.get_balance_usuario(41_192_387).is_ok_and(|b| b == 0.0));
@@ -1118,8 +1147,8 @@ mod tests {
         let mut p = crear_plataforma_base();
         let dcm = DatosCriptomoneda::ethereum();
         let bc = dcm.blockchains.first().expect("Cripto no tiene blockchains");
-        assert!(p.retirar_cripto(41_192_387, 0.015, Criptomoneda::Ethereum, bc).is_err_and(|e| e == ErrorTransaccion::UsuarioNoValidado));
-        assert!(p.retirar_cripto(12_345_678, 0.015, Criptomoneda::Ethereum, bc).is_err_and(|e| e == ErrorTransaccion::UsuarioInexistente));
+        assert!(p.retirar_cripto(41_192_387, 0.015, Criptomoneda::Ethereum, bc).is_err_and(|e| e == ErrorPlataforma::UsuarioNoValidado(41_192_387)));
+        assert!(p.retirar_cripto(12_345_678, 0.015, Criptomoneda::Ethereum, bc).is_err_and(|e| e == ErrorPlataforma::UsuarioInexistente(12_345_678)));
     }
 
     #[test]
@@ -1129,9 +1158,9 @@ mod tests {
 
         let dcm = DatosCriptomoneda::usdcoin();
         let bc = dcm.blockchains.first().expect("Cripto no tiene blockchains");
-        assert!(p.retirar_cripto(41_192_387, 1.0, Criptomoneda::USDCoin, bc).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
-        assert!(p.retirar_cripto(41_192_387, f64::MAX, Criptomoneda::USDCoin, bc).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
-        assert!(p.retirar_cripto(41_192_387, 0.0_f64.next_up(), Criptomoneda::USDCoin, bc).is_err_and(|e| e == ErrorTransaccion::BalanceInsuficiente));
+        assert!(p.retirar_cripto(41_192_387, 1.0, Criptomoneda::USDCoin, bc).is_err_and(|e| e == ErrorPlataforma::BalanceInsuficiente { dni: 41_192_387, prefijo: Criptomoneda::USDCoin.prefijo(), disponible: 0.0, a_pagar: 1.0 }));
+        assert!(p.retirar_cripto(41_192_387, f64::MAX, Criptomoneda::USDCoin, bc).is_err_and(|e| e == ErrorPlataforma::BalanceInsuficiente { dni: 41_192_387, prefijo: Criptomoneda::USDCoin.prefijo(), disponible: 0.0, a_pagar: f64::MAX }));
+        assert!(p.retirar_cripto(41_192_387, 0.0_f64.next_up(), Criptomoneda::USDCoin, bc).is_err_and(|e| e == ErrorPlataforma::BalanceInsuficiente { dni: 41_192_387, prefijo: Criptomoneda::USDCoin.prefijo(), disponible: 0.0, a_pagar: 0.0_f64.next_up() }));
     
         // comprobar que no se haya realizado ninguna transaccion
         assert!(p.get_balance_usuario(41_192_387).is_ok_and(|b| b == 0.0));
@@ -1143,8 +1172,10 @@ mod tests {
         let mut p = crear_plataforma_base();
         assert!(p.validar_usuario(41_192_387).is_ok());
 
-        assert!(p.retirar_cripto(41_192_387, 0.015, Criptomoneda::Bitcoin, &Blockchain::ethereum()).is_err_and(|e| e == ErrorTransaccion::BlockchainInvalida));
-        assert!(p.retirar_cripto(41_192_387, 1.5, Criptomoneda::Ethereum, &Blockchain::polygon()).is_err_and(|e| e == ErrorTransaccion::BlockchainInvalida));
+        let bceth = Blockchain::ethereum();
+        let bcpol = Blockchain::polygon();
+        assert!(p.retirar_cripto(41_192_387, 0.015, Criptomoneda::Bitcoin, &bceth).is_err_and(|e| e == ErrorPlataforma::BlockchainInvalida { blockchain: bceth.prefijo(), cripto: Criptomoneda::Bitcoin.prefijo(), validas: Criptomoneda::Bitcoin.lista_blockchain_prefijos() }));
+        assert!(p.retirar_cripto(41_192_387, 1.5, Criptomoneda::Ethereum, &bcpol).is_err_and(|e| e == ErrorPlataforma::BlockchainInvalida { blockchain: bcpol.prefijo(), cripto: Criptomoneda::Ethereum.prefijo(), validas: Criptomoneda::Ethereum.lista_blockchain_prefijos() }));
     }
 
     #[test]
@@ -1159,13 +1190,13 @@ mod tests {
         let dcm = DatosCriptomoneda::usdcoin();
         let bc = dcm.blockchains.last().expect("Cripto no tiene blockchains");
         assert!(p.recibir_cripto(41_192_387, 250.0, Criptomoneda::USDCoin, bc).is_ok_and(
-            |t| t.validar_recepcion_cripto(41_192_387, 250.0, Criptomoneda::USDCoin, usdc_coti, &bc.prefijo) && 
-                !t.validar_retiro_cripto(41_192_387, 999.0, Criptomoneda::USDCoin, usdc_coti, &bc.prefijo, "Ethereum304805589531039275")
+            |t| t.validar_recepcion_cripto(41_192_387, 250.0, Criptomoneda::USDCoin, usdc_coti, &bc.prefijo()) && 
+                !t.validar_retiro_cripto(41_192_387, 999.0, Criptomoneda::USDCoin, usdc_coti, &bc.prefijo(), "Ethereum304805589531039275")
         ));
         assert!(p.get_balance_cripto_usuario(41_192_387, Criptomoneda::USDCoin).is_ok_and(|v| v == 500.0 + 250.0));
 
         assert!(p.recibir_cripto(41_192_387, 0.0_f64.next_up(), Criptomoneda::USDCoin, bc).is_ok_and(
-            |t| t.validar_recepcion_cripto(41_192_387, 0.0_f64.next_up(), Criptomoneda::USDCoin, usdc_coti, &bc.prefijo)
+            |t| t.validar_recepcion_cripto(41_192_387, 0.0_f64.next_up(), Criptomoneda::USDCoin, usdc_coti, &bc.prefijo())
         ));
         assert!(p.get_balance_cripto_usuario(41_192_387, Criptomoneda::USDCoin).is_ok_and(|v| v == 500.0 + 250.0 + 0.0_f64.next_up()));
     }
@@ -1177,13 +1208,13 @@ mod tests {
 
         let dcm = DatosCriptomoneda::shibainu();
         let bc = dcm.blockchains.last().expect("Cripto no tiene blockchains");
-        assert!(p.recibir_cripto(41_192_387, -5.0, Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.recibir_cripto(41_192_387, 0.0, Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.recibir_cripto(41_192_387, f64::MIN, Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.recibir_cripto(41_192_387, f64::INFINITY, Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.recibir_cripto(41_192_387, f64::NEG_INFINITY, Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.recibir_cripto(41_192_387, f64::NAN, Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
-        assert!(p.recibir_cripto(41_192_387, 0.0_f64.next_down(), Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorTransaccion::MontoInvalido));
+        assert!(p.recibir_cripto(41_192_387, -5.0, Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(-5.0)));
+        assert!(p.recibir_cripto(41_192_387, 0.0, Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(0.0)));
+        assert!(p.recibir_cripto(41_192_387, f64::MIN, Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::MIN)));
+        assert!(p.recibir_cripto(41_192_387, f64::INFINITY, Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::INFINITY)));
+        assert!(p.recibir_cripto(41_192_387, f64::NEG_INFINITY, Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(f64::NEG_INFINITY)));
+        assert!(p.recibir_cripto(41_192_387, f64::NAN, Criptomoneda::ShibaInu, bc).is_err_and(|e| matches!(e, ErrorPlataforma::MontoInvalido(v) if v.is_nan())));
+        assert!(p.recibir_cripto(41_192_387, 0.0_f64.next_down(), Criptomoneda::ShibaInu, bc).is_err_and(|e| e == ErrorPlataforma::MontoInvalido(0.0_f64.next_down())));
     
         // comprobar que no se haya realizado ninguna transaccion
         assert!(p.get_balance_usuario(41_192_387).is_ok_and(|b| b == 0.0));
@@ -1195,8 +1226,8 @@ mod tests {
         let mut p = crear_plataforma_base();
         let dcm = DatosCriptomoneda::bitcoin();
         let bc = dcm.blockchains.first().expect("Cripto no tiene blockchains");
-        assert!(p.recibir_cripto(41_192_387, 0.015, Criptomoneda::Bitcoin, bc).is_err_and(|e| e == ErrorTransaccion::UsuarioNoValidado));
-        assert!(p.recibir_cripto(12_345_678, 0.015, Criptomoneda::Bitcoin, bc).is_err_and(|e| e == ErrorTransaccion::UsuarioInexistente));
+        assert!(p.recibir_cripto(41_192_387, 0.015, Criptomoneda::Bitcoin, bc).is_err_and(|e| e == ErrorPlataforma::UsuarioNoValidado(41_192_387)));
+        assert!(p.recibir_cripto(12_345_678, 0.015, Criptomoneda::Bitcoin, bc).is_err_and(|e| e == ErrorPlataforma::UsuarioInexistente(12_345_678)));
     }
 
     #[test]
@@ -1204,8 +1235,10 @@ mod tests {
         let mut p = crear_plataforma_base();
         assert!(p.validar_usuario(41_192_387).is_ok());
 
-        assert!(p.recibir_cripto(41_192_387, 0.015, Criptomoneda::USDCoin, &Blockchain::tron()).is_err_and(|e| e == ErrorTransaccion::BlockchainInvalida));
-        assert!(p.recibir_cripto(41_192_387, 1.5, Criptomoneda::ShibaInu, &Blockchain::solana()).is_err_and(|e| e == ErrorTransaccion::BlockchainInvalida));
+        let bctron = Blockchain::tron();
+        let bcsol = Blockchain::solana();
+        assert!(p.recibir_cripto(41_192_387, 0.015, Criptomoneda::USDCoin, &bctron).is_err_and(|e| e == ErrorPlataforma::BlockchainInvalida { blockchain: bctron.prefijo(), cripto: Criptomoneda::USDCoin.prefijo(), validas: Criptomoneda::USDCoin.lista_blockchain_prefijos() }));
+        assert!(p.recibir_cripto(41_192_387, 1.5, Criptomoneda::ShibaInu, &bcsol).is_err_and(|e| e == ErrorPlataforma::BlockchainInvalida { blockchain: bcsol.prefijo(), cripto: Criptomoneda::ShibaInu.prefijo(), validas: Criptomoneda::ShibaInu.lista_blockchain_prefijos() }));
     }
 
     #[test]

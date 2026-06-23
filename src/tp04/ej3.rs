@@ -1,6 +1,7 @@
 #![allow(unused)]
 use crate::tp03::ej3::Fecha;
 use std::collections::BTreeMap;
+use std::fmt::{Display, Formatter};
 
 impl PartialEq for Fecha {
     fn eq(&self, o: &Fecha) -> bool {
@@ -8,9 +9,34 @@ impl PartialEq for Fecha {
     }
 }
 
+#[derive(PartialEq, Debug, Clone)]
+pub enum ErrorSuscripcion {
+    NoActiva, Cancelada, NoSePuedeMejorar(TipoSuscripcion), UsuarioNoExiste(u64)
+}
+impl Display for ErrorSuscripcion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ErrorSuscripcion::NoActiva => write!(f, "user already exists"),
+            ErrorSuscripcion::Cancelada => write!(f, "user does not exist"),
+            ErrorSuscripcion::NoSePuedeMejorar(s) => write!(f, "No se puede mejorar una suscripcion de tipo {}", s),
+            ErrorSuscripcion::UsuarioNoExiste(id) => write!(f, "Usuario {} no existe", id)
+        }
+    }
+}
+
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum TipoSuscripcion {
     Basic, Classic, Super
+}
+
+impl Display for TipoSuscripcion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TipoSuscripcion::Basic => write!(f, "Basic"),
+            TipoSuscripcion::Classic => write!(f, "Classic"),
+            TipoSuscripcion::Super => write!(f, "Super"),
+        }
+    }
 }
 
 impl TipoSuscripcion {
@@ -70,20 +96,20 @@ impl Suscripcion {
         Suscripcion::new(tipo, self.duracion_meses, self.fecha_inicio.clone())
     }
 
-    pub fn upgrade(&mut self) -> Result<Self, &'static str> {
+    pub fn upgrade(&mut self) -> Result<Self, ErrorSuscripcion> {
         if self.esta_activa() {
             match self.tipo {
                 TipoSuscripcion::Basic => Ok(self.clone_nuevo_tipo(TipoSuscripcion::Classic)),
                 TipoSuscripcion::Classic => Ok(self.clone_nuevo_tipo(TipoSuscripcion::Super)),
-                TipoSuscripcion::Super => Err("No se puede mejorar una suscripcion Super")
+                TipoSuscripcion::Super => Err(ErrorSuscripcion::NoSePuedeMejorar(self.tipo))
             }
         } else {
-            Err("Suscripcion no activa")
+            Err(ErrorSuscripcion::NoActiva)
         }
         
     }
 
-    pub fn downgrade(&mut self) -> Result<Self, &'static str> {
+    pub fn downgrade(&mut self) -> Result<Self, ErrorSuscripcion> {
         if self.esta_activa() {
             match self.tipo {
                 TipoSuscripcion::Basic => self.cancelar(),
@@ -91,16 +117,16 @@ impl Suscripcion {
                 TipoSuscripcion::Super => Ok(self.clone_nuevo_tipo(TipoSuscripcion::Classic))
             }
         } else {
-            Err("Suscripcion no activa")
+            Err(ErrorSuscripcion::NoActiva)
         }
     }
 
-    pub fn cancelar(&mut self) -> Result<Self, &'static str> {
+    pub fn cancelar(&mut self) -> Result<Self, ErrorSuscripcion> {
         if self.esta_activa() {
             self.activa = false;
             Ok(self.clone())
         } else {
-            Err("Suscripcion ya cancelada")
+            Err(ErrorSuscripcion::Cancelada)
         }
     }
 
@@ -203,32 +229,32 @@ impl Plataforma {
         self.suscripciones.insert(id, vec![suscripcion]);
     }
 
-    pub fn upgrade_suscripcion(&mut self, id: u64) -> Result<(), &'static str> {
+    pub fn upgrade_suscripcion(&mut self, id: u64) -> Result<(), ErrorSuscripcion> {
         if let Some(vecsusc) = self.suscripciones.get_mut(&id) {
             let newsusc = vecsusc.last_mut().unwrap().upgrade()?;
             vecsusc.push(newsusc); 
             Ok(())
         } else {
-            Err("Usuario no existente")
+            Err(ErrorSuscripcion::UsuarioNoExiste(id))
         }
     }
 
-    pub fn downgrade_suscripcion(&mut self, id: u64) -> Result<(), &'static str> {
+    pub fn downgrade_suscripcion(&mut self, id: u64) -> Result<(), ErrorSuscripcion> {
         if let Some(vecsusc) = self.suscripciones.get_mut(&id) {
             let newsusc = vecsusc.last_mut().unwrap().downgrade()?;
             if newsusc.esta_activa() { vecsusc.push(newsusc); }
             Ok(())
         } else {
-            Err("Usuario no existente")
+            Err(ErrorSuscripcion::UsuarioNoExiste(id))
         }
     }
 
-    pub fn cancelar_suscripcion(&mut self, id: u64) -> Result<(), &'static str> {
+    pub fn cancelar_suscripcion(&mut self, id: u64) -> Result<(), ErrorSuscripcion> {
         if let Some(vecsusc) = self.suscripciones.get_mut(&id) {
             vecsusc.last_mut().unwrap().cancelar()?;
             Ok(())
         } else {
-            Err("Usuario no existente")
+            Err(ErrorSuscripcion::UsuarioNoExiste(id))
         }
     }
 
@@ -362,7 +388,7 @@ mod tests {
         assert!(susc0.get(1).is_some_and(|s| s.tipo == TipoSuscripcion::Super && s.esta_activa()));
 
         // intentar upgrade de Super falla
-        assert!(p.upgrade_suscripcion(0).is_err());
+        assert!(p.upgrade_suscripcion(0).is_err_and(|e| e == ErrorSuscripcion::NoSePuedeMejorar(TipoSuscripcion::Super)));
 
         // se guardan todas las suscripciones, pero no se agregan nuevas activas (1 por usuario)
         assert_eq!(p.cant_suscripciones_activas(), p.cant_usuarios());
@@ -379,10 +405,10 @@ mod tests {
 
         // upgrade a suscripcion no activa
         p.cancelar_suscripcion(0);
-        assert!(p.upgrade_suscripcion(0).is_err());
+        assert!(p.upgrade_suscripcion(0).is_err_and(|e| e == ErrorSuscripcion::NoActiva));
 
         // upgrade a usuario no existente
-        assert!(p.upgrade_suscripcion(100).is_err());
+        assert!(p.upgrade_suscripcion(100).is_err_and(|e| e == ErrorSuscripcion::UsuarioNoExiste(100)));
     }
 
     #[test]
@@ -403,7 +429,7 @@ mod tests {
         assert!(susc0.get(2).is_none());
 
         // intentar downgrade con cancelada falla
-        assert!(p.downgrade_suscripcion(0).is_err());
+        assert!(p.downgrade_suscripcion(0).is_err_and(|e| e == ErrorSuscripcion::NoActiva));
 
         // hay 3 usuarios, pero 1 cancelo
         // 1 suscripcion activa a lo sumo por usuario, pero se guarda el historial
@@ -420,7 +446,7 @@ mod tests {
         assert_eq!(p.cant_suscripciones(), p.cant_usuarios()+2);
 
         // downgrade a usuario no existente
-        assert!(p.downgrade_suscripcion(100).is_err());
+        assert!(p.downgrade_suscripcion(100).is_err_and(|e| e == ErrorSuscripcion::UsuarioNoExiste(100)));
     }
 
     #[test]
@@ -436,14 +462,14 @@ mod tests {
         assert!(susc0.get(1).is_none());
 
         // intentar cancelar de nuevo falla
-        assert!(p.cancelar_suscripcion(0).is_err());
+        assert!(p.cancelar_suscripcion(0).is_err_and(|e| e == ErrorSuscripcion::Cancelada));
 
         // hay 3 usuarios, 1 cancelo, no cambia la cantidad de suscripciones totales
         assert_eq!(p.cant_suscripciones_activas(), p.cant_usuarios()-1);
         assert_eq!(p.cant_suscripciones(), p.cant_usuarios());
 
         // cancelo a usuario no existente
-        assert!(p.cancelar_suscripcion(100).is_err());
+        assert!(p.cancelar_suscripcion(100).is_err_and(|e| e == ErrorSuscripcion::UsuarioNoExiste(100)));
     }
 
     #[test]

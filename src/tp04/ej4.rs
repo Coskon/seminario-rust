@@ -1,6 +1,7 @@
 #![allow(unused)]
 use crate::tp03::ej3::Fecha;
 use std::collections::HashMap;
+use std::fmt::{Display, Error, Formatter};
 
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub enum Categoria {
@@ -33,7 +34,15 @@ pub struct Producto {
 }
 
 impl Producto {
-    pub fn new(nombre: &str, categoria: Categoria, precio_base: f64) -> Self {
+    pub fn new(nombre: &str, categoria: Categoria, precio_base: f64) -> Result<Self, ErrorSistema> {
+        if !precio_base.is_finite() || precio_base <= 0.0 {
+            Err(ErrorSistema::PrecioInvalido(precio_base))
+        } else {
+            Ok(Producto { nombre: nombre.to_string(), categoria, precio_base })
+        }
+    }
+
+    pub fn new_test_unchecked(nombre: &str, categoria: Categoria, precio_base: f64) -> Self {
         Producto { nombre: nombre.to_string(), categoria, precio_base }
     }
 
@@ -92,8 +101,18 @@ impl Venta {
 }
 
 #[derive(PartialEq, Debug, Clone)]
-pub enum ErrorVenta {
-    ListaProductosVacia, PrecioCeroNegativo, CantidadCero
+pub enum ErrorSistema {
+    ListaProductosVacia, PrecioInvalido(f64), CantidadCero(String)
+}
+
+impl Display for ErrorSistema {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ErrorSistema::ListaProductosVacia => write!(f, "Lista de productos vacia"),
+            ErrorSistema::PrecioInvalido(p) => write!(f, "Precio {} es invalido (cero, negativo, infinito o NaN)", p),
+            ErrorSistema::CantidadCero(nombrep) => write!(f, "Cantidad del producto {} es 0", nombrep),
+        }
+    }
 }
 
 pub struct SistemaVentas {
@@ -107,15 +126,15 @@ impl SistemaVentas {
     }
 
     pub fn registrar_venta(&mut self, fecha: Fecha, cliente: Cliente, vendedor: Vendedor, 
-        medio_pago: MedioPago, productos: Vec<(Producto, u32)>) -> Result<(), ErrorVenta> {
+        medio_pago: MedioPago, productos: Vec<(Producto, u32)>) -> Result<(), ErrorSistema> {
         if productos.is_empty() {
-            Err(ErrorVenta::ListaProductosVacia)
+            Err(ErrorSistema::ListaProductosVacia)
         } else {
             productos.iter().try_for_each(|(p, cant)| {
-                if p.precio_base <= 0.0 {
-                    Err(ErrorVenta::PrecioCeroNegativo)
+                if !p.precio_base.is_finite() || p.precio_base <= 0.0 { // aunque Producto::new() haga la comprobacion, se puede usar Producto { ... } y poner precio negativo
+                    Err(ErrorSistema::PrecioInvalido(p.precio_base))
                 } else if *cant == 0 {
-                    Err(ErrorVenta::CantidadCero)
+                    Err(ErrorSistema::CantidadCero(p.nombre.clone()))
                 } else {
                     Ok(())
                 }
@@ -189,10 +208,10 @@ mod tests {
             Vendedor::new(1234, 6, 900_000.0), 
             MedioPago::Efectivo, 
             vec![
-                (Producto::new("Arroz 1Kg", Categoria::Comida, 1050.0), 2),
-                (Producto::new("Fideos Tallarin", Categoria::Comida, 1250.0), 4),
-                (Producto::new("Cargador Celular", Categoria::Electronica, 5649.99), 1),
-                (Producto::new("Par Medias", Categoria::Ropa, 3999.99), 1),
+                (Producto::new("Arroz 1Kg", Categoria::Comida, 1050.0).unwrap(), 2),
+                (Producto::new("Fideos Tallarin", Categoria::Comida, 1250.0).unwrap(), 4),
+                (Producto::new("Cargador Celular", Categoria::Electronica, 5649.99).unwrap(), 1),
+                (Producto::new("Par Medias", Categoria::Ropa, 3999.99).unwrap(), 1),
             ]).is_ok());
         assert!(sv.registrar_venta(
             Fecha::new(26, 5, 2026),
@@ -200,9 +219,9 @@ mod tests {
             Vendedor::new(1234, 6, 900_000.0), 
             MedioPago::Efectivo, 
             vec![
-                (Producto::new("Queso Crema", Categoria::Comida, 2349.99), 2),
-                (Producto::new("Aceite Auto", Categoria::Automotor, 44499.99), 1),
-                (Producto::new("36u Bloques Construccion", Categoria::Juguetes, 30000.0), 1),
+                (Producto::new("Queso Crema", Categoria::Comida, 2349.99).unwrap(), 2),
+                (Producto::new("Aceite Auto", Categoria::Automotor, 44499.99).unwrap(), 1),
+                (Producto::new("36u Bloques Construccion", Categoria::Juguetes, 30000.0).unwrap(), 1),
             ]).is_ok());
         assert!(sv.registrar_venta(
             Fecha::new(3, 6, 2026),
@@ -210,13 +229,31 @@ mod tests {
             Vendedor::new(5678, 15, 1_200_000.0), 
             MedioPago::TarjetaDebito, 
             vec![
-                (Producto::new("Desodorante", Categoria::Belleza, 6500.0), 1),
-                (Producto::new("Mancuerna 5kg", Categoria::Deportes, 14999.99), 2),
-                (Producto::new("Harry Potter", Categoria::Libros, 34999.99), 1),
-                (Producto::new("Lampara LED", Categoria::Hogar, 7000.0), 1)
+                (Producto::new("Desodorante", Categoria::Belleza, 6500.0).unwrap(), 1),
+                (Producto::new("Mancuerna 5kg", Categoria::Deportes, 14999.99).unwrap(), 2),
+                (Producto::new("Harry Potter", Categoria::Libros, 34999.99).unwrap(), 1),
+                (Producto::new("Lampara LED", Categoria::Hogar, 7000.0).unwrap(), 1)
             ]).is_ok());
 
         sv
+    }
+
+    #[test]
+    fn creacion_producto_valido() {
+        assert!(Producto::new("Desodorante", Categoria::Belleza, 6500.0).is_ok_and(
+            |p| p.nombre == "Desodorante" && p.categoria == Categoria::Belleza && p.precio_base == 6500.0 && p.get_precio_final() == 6500.0 * 0.95));
+        assert!(Producto::new("Par Medias", Categoria::Ropa, 3999.99).is_ok_and(
+            |p| p.nombre == "Par Medias" && p.categoria == Categoria::Ropa && p.precio_base == 3999.99 && p.get_precio_final() == 3999.99 * 0.95));
+    }
+
+    #[test]
+    fn creacion_producto_precio_invalido() {
+        assert!(Producto::new("Par Medias", Categoria::Ropa, 0.0).is_err_and(|e| e == ErrorSistema::PrecioInvalido(0.0)));
+        assert!(Producto::new("Par Medias", Categoria::Ropa, -15.56).is_err_and(|e| e == ErrorSistema::PrecioInvalido(-15.56)));
+        assert!(Producto::new("Par Medias", Categoria::Ropa, 0.0_f64.next_down()).is_err_and(|e| e == ErrorSistema::PrecioInvalido(0.0_f64.next_down())));
+        assert!(Producto::new("Par Medias", Categoria::Ropa, f64::INFINITY).is_err_and(|e| e == ErrorSistema::PrecioInvalido(f64::INFINITY)));
+        assert!(Producto::new("Par Medias", Categoria::Ropa, f64::NEG_INFINITY).is_err_and(|e| e == ErrorSistema::PrecioInvalido(f64::NEG_INFINITY)));
+        assert!(Producto::new("Par Medias", Categoria::Ropa, f64::NAN).is_err_and(|e| matches!(e, ErrorSistema::PrecioInvalido(p) if p.is_nan())));
     }
 
     #[test]
@@ -228,10 +265,10 @@ mod tests {
             Vendedor::new(1234, 6, 900_000.0), 
             MedioPago::Efectivo, 
             vec![ 
-                (Producto::new("Arroz 1Kg", Categoria::Comida, 1050.0), 2),
-                (Producto::new("Fideos Tallarin", Categoria::Comida, 1250.0), 4),
-                (Producto::new("Cargador Celular", Categoria::Electronica, 5649.99), 1),
-                (Producto::new("Par Medias", Categoria::Ropa, 3999.99), 1),
+                (Producto::new("Arroz 1Kg", Categoria::Comida, 1050.0).unwrap(), 2),
+                (Producto::new("Fideos Tallarin", Categoria::Comida, 1250.0).unwrap(), 4),
+                (Producto::new("Cargador Celular", Categoria::Electronica, 5649.99).unwrap(), 1),
+                (Producto::new("Par Medias", Categoria::Ropa, 3999.99).unwrap(), 1),
             ]).is_ok());
         assert!(sv.registrar_venta(
             Fecha::new(26, 5, 2026),
@@ -239,9 +276,9 @@ mod tests {
             Vendedor::new(1234, 6, 900_000.0), 
             MedioPago::Efectivo, 
             vec![ 
-                (Producto::new("Queso Crema", Categoria::Comida, 2349.99), 2),
-                (Producto::new("Aceite Auto", Categoria::Automotor, 44499.99), 1),
-                (Producto::new("36u Bloques Construccion", Categoria::Juguetes, 30000.0), 1),
+                (Producto::new("Queso Crema", Categoria::Comida, 2349.99).unwrap(), 2),
+                (Producto::new("Aceite Auto", Categoria::Automotor, 44499.99).unwrap(), 1),
+                (Producto::new("36u Bloques Construccion", Categoria::Juguetes, 30000.0).unwrap(), 1),
             ]).is_ok());
         assert!(sv.registrar_venta(
             Fecha::new(3, 6, 2026),
@@ -249,11 +286,11 @@ mod tests {
             Vendedor::new(5678, 15, 1_200_000.0), 
             MedioPago::TarjetaDebito, 
             vec![
-                (Producto::new("Desodorante", Categoria::Belleza, 6500.0), 1),
-                (Producto::new("Mancuerna 5kg", Categoria::Deportes, 14999.99), 2),
-                (Producto::new("Harry Potter", Categoria::Libros, 34999.99), 1),
-                (Producto::new("Lampara LED", Categoria::Hogar, 7000.0), 1),
-                (Producto::new("Suplemento Vitamina C", Categoria::Salud, 15000.0), 1),
+                (Producto::new("Desodorante", Categoria::Belleza, 6500.0).unwrap(), 1),
+                (Producto::new("Mancuerna 5kg", Categoria::Deportes, 14999.99).unwrap(), 2),
+                (Producto::new("Harry Potter", Categoria::Libros, 34999.99).unwrap(), 1),
+                (Producto::new("Lampara LED", Categoria::Hogar, 7000.0).unwrap(), 1),
+                (Producto::new("Suplemento Vitamina C", Categoria::Salud, 15000.0).unwrap(), 1),
             ]).is_ok());
         assert!(sv.get_venta(0).is_some_and(|v| v.cliente.dni == 43_298_371 && v.productos.len() == 4));
         assert!(sv.get_venta(1).is_some_and(|v| v.cliente.dni == 39_876_019 && v.productos.len() == 3));
@@ -273,7 +310,7 @@ mod tests {
             Cliente::new("Pedro", "Perez", "7 y 47", Some("pedro.perez@gmail.com"), 43_298_371), 
             Vendedor::new(1234, 6, 900_000.0), 
             MedioPago::Efectivo, 
-            vec![]).is_err_and(|e| e == ErrorVenta::ListaProductosVacia));
+            vec![]).is_err_and(|e| e == ErrorSistema::ListaProductosVacia));
 
         assert!(sv.registrar_venta(
             Fecha::new(1, 2, 2026),
@@ -281,18 +318,18 @@ mod tests {
             Vendedor::new(1234, 6, 900_000.0), 
             MedioPago::Efectivo, 
             vec![
-                (Producto::new("Arroz 1Kg", Categoria::Comida, 1050.0), 2),
-                (Producto::new("Fideos Tallarin", Categoria::Comida, -1250.0), 4)
-            ]).is_err_and(|e| e == ErrorVenta::PrecioCeroNegativo));
+                (Producto::new_test_unchecked("Arroz 1Kg", Categoria::Comida, 1050.0), 2),
+                (Producto::new_test_unchecked("Fideos Tallarin", Categoria::Comida, -1250.0), 4)
+            ]).is_err_and(|e| e == ErrorSistema::PrecioInvalido(-1250.0)));
         assert!(sv.registrar_venta(
             Fecha::new(1, 2, 2026),
             Cliente::new("Pedro", "Perez", "7 y 47", Some("pedro.perez@gmail.com"), 43_298_371), 
             Vendedor::new(1234, 6, 900_000.0), 
             MedioPago::Efectivo, 
             vec![
-                (Producto::new("Arroz 1Kg", Categoria::Comida, 0.0), 2),
-                (Producto::new("Fideos Tallarin", Categoria::Comida, 1250.0), 4)
-            ]).is_err_and(|e| e == ErrorVenta::PrecioCeroNegativo));
+                (Producto::new_test_unchecked("Arroz 1Kg", Categoria::Comida, 0.0), 2),
+                (Producto::new_test_unchecked("Fideos Tallarin", Categoria::Comida, 1250.0), 4)
+            ]).is_err_and(|e| e == ErrorSistema::PrecioInvalido(0.0)));
 
         assert!(sv.registrar_venta(
             Fecha::new(1, 2, 2026),
@@ -300,9 +337,29 @@ mod tests {
             Vendedor::new(1234, 6, 900_000.0), 
             MedioPago::Efectivo, 
             vec![
-                (Producto::new("Arroz 1Kg", Categoria::Comida, 1050.0), 2),
-                (Producto::new("Fideos Tallarin", Categoria::Comida, 1250.0), 0)
-            ]).is_err_and(|e| e == ErrorVenta::CantidadCero));
+                (Producto::new_test_unchecked("Arroz 1Kg", Categoria::Comida, 500.0), 4),
+                (Producto::new_test_unchecked("Fideos Tallarin", Categoria::Comida, f64::INFINITY), 1)
+            ]).is_err_and(|e| e == ErrorSistema::PrecioInvalido(f64::INFINITY)));
+
+        assert!(sv.registrar_venta(
+            Fecha::new(1, 2, 2026),
+            Cliente::new("Pedro", "Perez", "7 y 47", Some("pedro.perez@gmail.com"), 43_298_371), 
+            Vendedor::new(1234, 6, 900_000.0), 
+            MedioPago::Efectivo, 
+            vec![
+                (Producto::new_test_unchecked("Arroz 1Kg", Categoria::Comida, 250.0), 3),
+                (Producto::new_test_unchecked("Fideos Tallarin", Categoria::Comida, f64::NAN), 1)
+            ]).is_err_and(|e| matches!(e, ErrorSistema::PrecioInvalido(p) if p.is_nan())));
+
+        assert!(sv.registrar_venta(
+            Fecha::new(1, 2, 2026),
+            Cliente::new("Pedro", "Perez", "7 y 47", Some("pedro.perez@gmail.com"), 43_298_371), 
+            Vendedor::new(1234, 6, 900_000.0), 
+            MedioPago::Efectivo, 
+            vec![
+                (Producto::new_test_unchecked("Arroz 1Kg", Categoria::Comida, 1050.0), 2),
+                (Producto::new_test_unchecked("Fideos Tallarin", Categoria::Comida, 1250.0), 0)
+            ]).is_err_and(|e| e == ErrorSistema::CantidadCero("Fideos Tallarin".to_string())));
     }
 
     #[test]
@@ -335,11 +392,21 @@ mod tests {
             Vendedor::new(5678, 15, 1_200_000.0),
             MedioPago::TarjetaDebito,
             vec![
-                (Producto::new("Suplemento Vitamina C", Categoria::Salud, 15000.0), 2)
+                (Producto::new("Suplemento Vitamina C", Categoria::Salud, 15000.0).unwrap(), 2)
             ]);
         let reporte = sv.reporte_ventas_categoria();
         assert_eq!(reporte.len(), 10);
         assert!(reporte.get(&Categoria::Salud).is_some_and(|v| *v == 15000.0*2.0*0.9));
+    }
+
+    #[test]
+    fn test_reporte_ventas_categoria_sin_ventas() {
+        let mut sv = SistemaVentas::new();
+        let reporte = sv.reporte_ventas_categoria();
+        assert_eq!(reporte.len(), 0);
+        assert!(!reporte.contains_key(&Categoria::Automotor));
+        assert!(!reporte.contains_key(&Categoria::Belleza));
+        assert!(!reporte.contains_key(&Categoria::Salud));
     }
 
     #[test]
@@ -350,5 +417,14 @@ mod tests {
         assert!(reporte.get(&1234).is_some_and(|v| *v == (1050.0*0.95*2.0+1250.0*0.95*4.0+5649.99+3999.99*0.95)*0.9 + (2349.99*0.95*2.0+44499.99+30000.0) ));
         assert!(reporte.get(&5678).is_some_and(|v| *v == (6500.0*0.95+14999.99*2.0+34999.99*0.9+7000.0*0.9)*0.9 ));
         assert!(!reporte.contains_key(&2345));
+    }
+
+    #[test]
+    fn test_reporte_ventas_vendedor_sin_ventas() {
+        let mut sv = SistemaVentas::new();
+        let reporte = sv.reporte_ventas_vendedor();
+        assert_eq!(reporte.len(), 0);
+        assert!(!reporte.contains_key(&1234));
+        assert!(!reporte.contains_key(&5678));
     }
 }
