@@ -713,6 +713,7 @@ mod tests {
         assert!(p.get_balance_usuario(41_192_387).is_ok_and(|b| b == 0.0));
         assert!(p.get_balance_cripto_usuario(41_192_387, Criptomoneda::Bitcoin).is_ok_and(|b| b == 0.0));
         assert!(p.get_balance_usuario(12_345_678).is_err_and(|e| e == ErrorUsuario::UsuarioInexistente));
+        assert!(p.get_balance_cripto_usuario(12_345_678, Criptomoneda::Ethereum).is_err_and(|e| e == ErrorUsuario::UsuarioInexistente));
     }
 
     fn crear_plataforma_base() -> PlataformaXYZ {
