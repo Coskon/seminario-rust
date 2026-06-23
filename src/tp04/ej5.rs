@@ -753,6 +753,22 @@ mod tests {
     }
     
     #[test]
+    fn error_plataforma_display() {
+        assert_eq!(ErrorPlataforma::UsuarioYaExiste(1234).to_string(), "Usuario 1234 ya existe");
+        assert_eq!(ErrorPlataforma::UsuarioInexistente(1234).to_string(), "Usuario 1234 no existe");
+        assert_eq!(ErrorPlataforma::UsuarioNoValidado(1234).to_string(), "Usuario 1234 no fue validado");
+        assert_eq!(ErrorPlataforma::MontoInvalido(-6.0).to_string(), "Monto -6 es invalido (cero, negativo, infinito o NaN)");
+        assert_eq!(ErrorPlataforma::MontoInvalido(3.14159).to_string(), "Monto 3.14159 es invalido (cero, negativo, infinito o NaN)");
+        assert_eq!(ErrorPlataforma::MontoInvalido(f64::NAN).to_string(), "Monto NaN es invalido (cero, negativo, infinito o NaN)");
+        assert_eq!(ErrorPlataforma::BalanceInsuficiente { dni: 1234, prefijo: "$".to_string(), disponible: 3.14, a_pagar: 100.0 }.to_string(), "Usuario 1234 tiene balance $3.14, insuficiente para pagar $100");
+        assert_eq!(ErrorPlataforma::BalanceInsuficiente { dni: 1234, prefijo: Criptomoneda::Bitcoin.prefijo(), disponible: 0.001, a_pagar: f64::NAN }.to_string(), "Usuario 1234 tiene balance BTC0.001, insuficiente para pagar BTCNaN");
+        assert_eq!(ErrorPlataforma::BlockchainInvalida { blockchain: Blockchain::bitcoin().prefijo(), cripto: Criptomoneda::Ethereum.prefijo(), validas: Criptomoneda::Ethereum.lista_blockchain_prefijos() }.to_string(), "Blockchain BTC es invalida para criptomoneda ETH, blockchain validas: [\"ETH\"]");
+        assert_eq!(ErrorPlataforma::BlockchainInvalida { blockchain: Blockchain::bitcoin().prefijo(), cripto: Criptomoneda::Tether.prefijo(), validas: Criptomoneda::Tether.lista_blockchain_prefijos() }.to_string(), "Blockchain BTC es invalida para criptomoneda USDT, blockchain validas: [\"ETH\", \"TRX\", \"SOL\", \"POL\"]");
+        assert_eq!(ErrorPlataforma::BlockchainInvalida { blockchain: Blockchain::tron().prefijo(), cripto: Criptomoneda::Bitcoin.prefijo(), validas: Criptomoneda::Bitcoin.lista_blockchain_prefijos() }.to_string(), "Blockchain TRX es invalida para criptomoneda BTC, blockchain validas: [\"BTC\"]");
+        assert_eq!(ErrorPlataforma::BlockchainInvalida { blockchain: "".to_string(), cripto: "".to_string(), validas: vec![] }.to_string(), "Blockchain  es invalida para criptomoneda , blockchain validas: []");
+    }
+
+    #[test]
     fn registrar_usuario() {
         let mut p = PlataformaXYZ::new(Rng::TEST_SEED);
         assert!(p.registrar_usuario(

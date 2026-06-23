@@ -16,8 +16,8 @@ pub enum ErrorSuscripcion {
 impl Display for ErrorSuscripcion {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ErrorSuscripcion::NoActiva => write!(f, "user already exists"),
-            ErrorSuscripcion::Cancelada => write!(f, "user does not exist"),
+            ErrorSuscripcion::NoActiva => write!(f, "Suscripcion no activa"),
+            ErrorSuscripcion::Cancelada => write!(f, "Suscripcion ya cancelada"),
             ErrorSuscripcion::NoSePuedeMejorar(s) => write!(f, "No se puede mejorar una suscripcion de tipo {}", s),
             ErrorSuscripcion::UsuarioNoExiste(id) => write!(f, "Usuario {} no existe", id)
         }
@@ -353,6 +353,23 @@ mod tests {
             MedioPago::Cripto { direccion_wallet: "0x73210aDxnUD9A90JD82".to_string() }
         );
         p
+    }
+
+    #[test]
+    fn test_error_display() {
+        assert_eq!(ErrorSuscripcion::NoActiva.to_string(), "Suscripcion no activa");
+        assert_eq!(ErrorSuscripcion::Cancelada.to_string(), "Suscripcion ya cancelada");
+        assert_eq!(ErrorSuscripcion::NoSePuedeMejorar(TipoSuscripcion::Basic).to_string(), "No se puede mejorar una suscripcion de tipo Basic");
+        assert_eq!(ErrorSuscripcion::NoSePuedeMejorar(TipoSuscripcion::Classic).to_string(), "No se puede mejorar una suscripcion de tipo Classic");
+        assert_eq!(ErrorSuscripcion::NoSePuedeMejorar(TipoSuscripcion::Super).to_string(), "No se puede mejorar una suscripcion de tipo Super");
+        assert_eq!(ErrorSuscripcion::UsuarioNoExiste(1234).to_string(), "Usuario 1234 no existe");
+    }
+
+    #[test]
+    fn test_tipo_suscripcion_display() {
+        assert_eq!(TipoSuscripcion::Basic.to_string(), "Basic");
+        assert_eq!(TipoSuscripcion::Classic.to_string(), "Classic");
+        assert_eq!(TipoSuscripcion::Super.to_string(), "Super");
     }
 
     #[test]

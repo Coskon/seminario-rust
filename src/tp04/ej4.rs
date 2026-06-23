@@ -239,6 +239,16 @@ mod tests {
     }
 
     #[test]
+    fn test_error_sistema_display() {
+        assert_eq!(ErrorSistema::ListaProductosVacia.to_string(), "Lista de productos vacia");
+        assert_eq!(ErrorSistema::PrecioInvalido(-6.0).to_string(), "Precio -6 es invalido (cero, negativo, infinito o NaN)");
+        assert_eq!(ErrorSistema::PrecioInvalido(3.14159).to_string(), "Precio 3.14159 es invalido (cero, negativo, infinito o NaN)");
+        assert_eq!(ErrorSistema::PrecioInvalido(f64::NAN).to_string(), "Precio NaN es invalido (cero, negativo, infinito o NaN)");
+        assert_eq!(ErrorSistema::CantidadCero("Arroz".to_string()).to_string(), "Cantidad del producto Arroz es 0");
+        assert_eq!(ErrorSistema::CantidadCero("".to_string()).to_string(), "Cantidad del producto  es 0");
+    }
+
+    #[test]
     fn creacion_producto_valido() {
         assert!(Producto::new("Desodorante", Categoria::Belleza, 6500.0).is_ok_and(
             |p| p.nombre == "Desodorante" && p.categoria == Categoria::Belleza && p.precio_base == 6500.0 && p.get_precio_final() == 6500.0 * 0.95));
