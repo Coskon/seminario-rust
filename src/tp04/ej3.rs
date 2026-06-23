@@ -6,10 +6,6 @@ impl PartialEq for Fecha {
     fn eq(&self, o: &Fecha) -> bool {
         self.equals(o)
     }
-
-    fn ne(&self, o: &Fecha) -> bool {
-        self.not_equals(o)
-    }
 }
 
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -162,14 +158,11 @@ pub enum MedioPago {
 
 impl MedioPago {
     pub fn es_tipo(&self, tipo: &TipoMedioPago) -> bool {
-        match (self, tipo) {
-            (MedioPago::Efectivo, TipoMedioPago::Efectivo) |
+        matches!((self, tipo), (MedioPago::Efectivo, TipoMedioPago::Efectivo) |
             (MedioPago::MercadoPago { .. }, TipoMedioPago::MercadoPago) |
             (MedioPago::TarjetaCredito { .. }, TipoMedioPago::TarjetaCredito) |
             (MedioPago::Transferencia { .. }, TipoMedioPago::Transferencia) |
-            (MedioPago::Cripto { .. }, TipoMedioPago::Cripto) => true,
-            _ => false
-        }
+            (MedioPago::Cripto { .. }, TipoMedioPago::Cripto))
     }
 }
 
@@ -352,20 +345,20 @@ mod tests {
         assert!(u3.is_some_and(|u| u.nombre == "juan.diaz1" && u.medio_pago.es_tipo(&TipoMedioPago::Cripto)));
     
         assert!(p.get_user(3).is_none());
-        assert_eq!(p.get_user_suscripciones(0).unwrap().get(0).unwrap().fecha_inicio, Fecha::new(17, 6, 2026));
-        assert!(p.get_user_suscripciones(1).unwrap().get(0).unwrap().fecha_inicio != Fecha::new(17, 6, 2026));
+        assert_eq!(p.get_user_suscripciones(0).unwrap().first().unwrap().fecha_inicio, Fecha::new(17, 6, 2026));
+        assert!(p.get_user_suscripciones(1).unwrap().first().unwrap().fecha_inicio != Fecha::new(17, 6, 2026));
     }
 
     #[test]
     fn test_upgrade_suscripcion() {
         let mut p = crear_plataforma_base();
 
-        assert!(p.get_user_suscripciones(0).unwrap().get(0).is_some_and(|s| s.tipo == TipoSuscripcion::Classic));
+        assert!(p.get_user_suscripciones(0).unwrap().first().is_some_and(|s| s.tipo == TipoSuscripcion::Classic));
 
         // upgrade Classic a Super
         assert!(p.upgrade_suscripcion(0).is_ok());
         let susc0 = p.get_user_suscripciones(0).unwrap();
-        assert!(susc0.get(0).is_some_and(|s| s.tipo == TipoSuscripcion::Classic && !s.esta_activa()));
+        assert!(susc0.first().is_some_and(|s| s.tipo == TipoSuscripcion::Classic && !s.esta_activa()));
         assert!(susc0.get(1).is_some_and(|s| s.tipo == TipoSuscripcion::Super && s.esta_activa()));
 
         // intentar upgrade de Super falla
@@ -378,7 +371,7 @@ mod tests {
         // upgrade Basic a Classic
         assert!(p.upgrade_suscripcion(1).is_ok());
         let susc1 = p.get_user_suscripciones(1).unwrap();
-        assert!(susc1.get(0).is_some_and(|s| s.tipo == TipoSuscripcion::Basic && !s.esta_activa()));
+        assert!(susc1.first().is_some_and(|s| s.tipo == TipoSuscripcion::Basic && !s.esta_activa()));
         assert!(susc1.get(1).is_some_and(|s| s.tipo == TipoSuscripcion::Classic && s.esta_activa()));
 
         assert_eq!(p.cant_suscripciones_activas(), p.cant_usuarios());
@@ -399,13 +392,13 @@ mod tests {
         // downgrade Classic a Basic
         assert!(p.downgrade_suscripcion(0).is_ok());
         let susc0 = p.get_user_suscripciones(0).unwrap();
-        assert!(susc0.get(0).is_some_and(|s| s.tipo == TipoSuscripcion::Classic && !s.esta_activa()));
+        assert!(susc0.first().is_some_and(|s| s.tipo == TipoSuscripcion::Classic && !s.esta_activa()));
         assert!(susc0.get(1).is_some_and(|s| s.tipo == TipoSuscripcion::Basic && s.esta_activa()));
 
         // downgrade Basic cancela, sin agregar al historial una nueva entrada
         assert!(p.downgrade_suscripcion(0).is_ok());
         let susc0 = p.get_user_suscripciones(0).unwrap();
-        assert!(susc0.get(0).is_some_and(|s| s.tipo == TipoSuscripcion::Classic && !s.esta_activa()));
+        assert!(susc0.first().is_some_and(|s| s.tipo == TipoSuscripcion::Classic && !s.esta_activa()));
         assert!(susc0.get(1).is_some_and(|s| s.tipo == TipoSuscripcion::Basic && !s.esta_activa()));
         assert!(susc0.get(2).is_none());
 
@@ -420,7 +413,7 @@ mod tests {
         // downgrade Super a Classic
         assert!(p.downgrade_suscripcion(2).is_ok());
         let susc2 = p.get_user_suscripciones(2).unwrap();
-        assert!(susc2.get(0).is_some_and(|s| s.tipo == TipoSuscripcion::Super && !s.esta_activa()));
+        assert!(susc2.first().is_some_and(|s| s.tipo == TipoSuscripcion::Super && !s.esta_activa()));
         assert!(susc2.get(1).is_some_and(|s| s.tipo == TipoSuscripcion::Classic && s.esta_activa()));
 
         assert_eq!(p.cant_suscripciones_activas(), p.cant_usuarios()-1);
@@ -434,12 +427,12 @@ mod tests {
     fn test_cancelar_suscripcion() {
         let mut p = crear_plataforma_base();
 
-        assert!(p.get_user_suscripciones(0).unwrap().get(0).is_some_and(|s| s.tipo == TipoSuscripcion::Classic));
+        assert!(p.get_user_suscripciones(0).unwrap().first().is_some_and(|s| s.tipo == TipoSuscripcion::Classic));
 
         // cancelar suscripcion de usuario 0 (no agrega al historial)
         assert!(p.cancelar_suscripcion(0).is_ok());
         let susc0 = p.get_user_suscripciones(0).unwrap();
-        assert!(susc0.get(0).is_some_and(|s| s.tipo == TipoSuscripcion::Classic && !s.esta_activa()));
+        assert!(susc0.first().is_some_and(|s| s.tipo == TipoSuscripcion::Classic && !s.esta_activa()));
         assert!(susc0.get(1).is_none());
 
         // intentar cancelar de nuevo falla

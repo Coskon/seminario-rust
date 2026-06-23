@@ -169,7 +169,7 @@ impl SistemaVentas {
         let mut reporte = HashMap::new();
 
         self.ventas.iter().for_each(|v|
-            *reporte.entry(v.vendedor.legajo).or_insert(0.0) += self.calcular_precio_total(&v)
+            *reporte.entry(v.vendedor.legajo).or_insert(0.0) += self.calcular_precio_total(v)
         );
 
         reporte
@@ -327,7 +327,7 @@ mod tests {
         assert!(reporte.get(&Categoria::Juguetes).is_some_and(|v| *v == 30000.0));
         assert!(reporte.get(&Categoria::Libros).is_some_and(|v| *v == 34999.99*0.9*0.9));
         assert!(reporte.get(&Categoria::Ropa).is_some_and(|v| *v == 3999.99*0.95*0.9));
-        assert!(reporte.get(&Categoria::Salud).is_none());
+        assert!(!reporte.contains_key(&Categoria::Salud));
 
         sv.registrar_venta(
             Fecha::new(1, 1, 2026), 
@@ -349,6 +349,6 @@ mod tests {
         assert_eq!(reporte.len(), 2);
         assert!(reporte.get(&1234).is_some_and(|v| *v == (1050.0*0.95*2.0+1250.0*0.95*4.0+5649.99+3999.99*0.95)*0.9 + (2349.99*0.95*2.0+44499.99+30000.0) ));
         assert!(reporte.get(&5678).is_some_and(|v| *v == (6500.0*0.95+14999.99*2.0+34999.99*0.9+7000.0*0.9)*0.9 ));
-        assert!(reporte.get(&2345).is_none());
+        assert!(!reporte.contains_key(&2345));
     }
 }

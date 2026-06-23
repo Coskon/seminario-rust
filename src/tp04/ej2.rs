@@ -45,16 +45,16 @@ pub fn alguno_vive_en_ciudad<'a>(vp: &'a Vec<Persona<'a>>, ciudad: &'a str) -> b
     vp.iter().any(|p| p.get_ciudad() == ciudad)
 }
 
-pub fn existe_persona<'a, const N: usize>(ap: &'a[Persona<'a>; N], persona: &'a Persona<'a>) -> bool {
+pub fn existe_persona<'a>(ap: &'a[Persona<'a>], persona: &'a Persona<'a>) -> bool {
     ap.contains(persona)
     //ap.iter().any(|p| p == persona)
 }
 
 pub fn obtener_edades<'a, const N: usize>(ap: &[Persona<'a>; N]) -> [u8; N] {
-    ap.iter().filter_map(|p| Some(p.get_edad())).collect::<Vec<_>>().try_into().expect("Error convirtiendo a arreglo")
+    ap.iter().map(|p| p.get_edad()).collect::<Vec<u8>>().try_into().expect("Error convirtiendo a arreglo")
 }
 
-pub fn menor_mayor_salario<'a, const N: usize>(ap: &'a [Persona<'a>; N]) -> (Option<&'a Persona<'a>>, Option<&'a Persona<'a>>) {
+pub fn menor_mayor_salario<'a>(ap: &'a [Persona<'a>]) -> (Option<&'a Persona<'a>>, Option<&'a Persona<'a>>) {
     let min = ap.iter().min_by(|p1, p2| {
         match p1.get_salario().total_cmp(&p2.get_salario()) {
             Ordering::Equal => p2.get_edad().cmp(&p1.get_edad()),
@@ -73,8 +73,7 @@ pub fn menor_mayor_salario<'a, const N: usize>(ap: &'a [Persona<'a>; N]) -> (Opt
 
 #[cfg(test)]
 mod tests {
-    use super::{Persona, salario_mayor, edad_mayor_y_vive_ciudad, todos_viven_en_ciudad, alguno_vive_en_ciudad,
-     existe_persona, obtener_edades, menor_mayor_salario };
+    use super::*;
 
     #[test]
     fn test_salario_mayor() {
@@ -195,7 +194,7 @@ mod tests {
         assert_eq!(menor_mayor_salario(&[]), (None, None));
 
         let p = Persona::new("Jorge", "Toledo", "2 y 47", "La Plata", 95000.0, 19);
-        assert_eq!(menor_mayor_salario(&[p.clone()]), (Some(&p), Some(&p)));
+        assert_eq!(menor_mayor_salario(std::slice::from_ref(&p)), (Some(&p), Some(&p)));
 
         let p1 = Persona::new("Jorge", "Toledo", "2 y 47", "La Plata", 195000.0, 19);
         let p2 = Persona::new("Jorge", "Toledo", "2 y 47", "La Plata", 195000.0, 22);
